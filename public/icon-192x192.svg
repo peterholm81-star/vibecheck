@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <rect width="192" height="192" rx="24" fill="#0f172a"/>
+  <circle cx="96" cy="80" r="32" fill="#8b5cf6"/>
+  <circle cx="96" cy="80" r="16" fill="#a78bfa"/>
+  <path d="M60 130 Q96 160 132 130" stroke="#8b5cf6" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <text x="96" y="175" text-anchor="middle" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="20" font-weight="bold">VibeCheck</text>
+</svg>
+
