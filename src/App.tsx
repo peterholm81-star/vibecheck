@@ -10,6 +10,7 @@ import { VenueList } from './components/VenueList';
 import { VenueDetail } from './components/VenueDetail';
 import { CheckInForm } from './components/CheckInForm';
 import { ProfileSettings } from './components/ProfileSettings';
+import { MobileFilters } from './components/MobileFilters';
 import { useProfile, type AgeBand } from './hooks/useProfile';
 import { getAgeBandFromBirthYear } from './utils/age';
 import { AGE_BAND_LABELS } from './utils/venueStats';
@@ -506,27 +507,44 @@ function MainApp({ userId }: MainAppProps) {
         </div>
       )}
 
-      {/* Heatmap Mode Controls - Visible on Map and Venues tabs */}
+      {/* Mobile Filters - Compact filter bar for small screens */}
       {(activeTab === 'map' || activeTab === 'venues') && (
-        <div className="bg-slate-800/60 border-b border-slate-700 px-3 sm:px-4 py-2">
-          <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-2 sm:gap-3">
-            <span className="text-xs text-slate-400 font-medium">Modus:</span>
-            <div className="flex gap-1.5 sm:gap-2 flex-wrap justify-center">
+        <div className="sm:hidden">
+          <MobileFilters
+            heatmapMode={heatmapMode}
+            setHeatmapMode={setHeatmapMode}
+            activeIntents={activeIntents}
+            toggleIntent={toggleIntent}
+            clearIntents={() => setActiveIntents([])}
+            activeAgeBands={activeAgeBands}
+            toggleAgeBand={toggleAgeBand}
+            clearAgeBands={() => setActiveAgeBands([])}
+            filteredCount={filteredCheckIns.length}
+          />
+        </div>
+      )}
+
+      {/* Desktop Filters - Full filter layout for larger screens */}
+      {/* Heatmap Mode Controls */}
+      {(activeTab === 'map' || activeTab === 'venues') && (
+        <div className="hidden sm:block bg-slate-800/60 border-b border-slate-700 px-4 py-2">
+          <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-3">
+            <span className="text-sm text-slate-400 font-medium">Modus:</span>
+            <div className="flex gap-2 flex-wrap justify-center">
               <button
                 onClick={() => setHeatmapMode('activity')}
-                className={`min-h-[36px] px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1 sm:gap-1.5 active:scale-95 ${
+                className={`min-h-[36px] px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 active:scale-95 ${
                   heatmapMode === 'activity'
                     ? 'bg-violet-500/20 text-violet-300 border border-violet-500'
                     : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
                 }`}
               >
                 <Activity size={12} />
-                <span className="hidden xs:inline">Aktivitet</span>
-                <span className="xs:hidden">Aktiv</span>
+                Aktivitet
               </button>
               <button
                 onClick={() => setHeatmapMode('single')}
-                className={`min-h-[36px] px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1 sm:gap-1.5 active:scale-95 ${
+                className={`min-h-[36px] px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 active:scale-95 ${
                   heatmapMode === 'single'
                     ? 'bg-pink-500/20 text-pink-300 border border-pink-500'
                     : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
@@ -537,7 +555,7 @@ function MainApp({ userId }: MainAppProps) {
               </button>
               <button
                 onClick={() => setHeatmapMode('ons')}
-                className={`min-h-[36px] px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1 sm:gap-1.5 active:scale-95 ${
+                className={`min-h-[36px] px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 active:scale-95 ${
                   heatmapMode === 'ons'
                     ? 'bg-orange-500/20 text-orange-300 border border-orange-500'
                     : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
@@ -548,34 +566,33 @@ function MainApp({ userId }: MainAppProps) {
               </button>
               <button
                 onClick={() => setHeatmapMode('ons_boost')}
-                className={`min-h-[36px] px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1 sm:gap-1.5 active:scale-95 ${
+                className={`min-h-[36px] px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 active:scale-95 ${
                   heatmapMode === 'ons_boost'
                     ? 'bg-red-500/20 text-red-300 border border-red-500'
                     : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
                 }`}
               >
                 <Zap size={12} />
-                <span className="hidden xs:inline">ONS Boost</span>
-                <span className="xs:hidden">Boost</span>
+                ONS Boost
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Intent Filter Controls - Visible on Map and Venues tabs */}
+      {/* Intent Filter Controls - Desktop */}
       {(activeTab === 'map' || activeTab === 'venues') && (
-        <div className="bg-slate-800/40 border-b border-slate-700 px-3 sm:px-4 py-2">
-          <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
+        <div className="hidden sm:block bg-slate-800/40 border-b border-slate-700 px-4 py-2">
+          <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-2">
             <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
               <Sparkles size={12} />
               Stemning:
             </span>
-            <div className="flex gap-1 sm:gap-1.5 flex-wrap justify-center">
+            <div className="flex gap-1.5 flex-wrap justify-center">
               {/* "Alle" button */}
               <button
                 onClick={() => setActiveIntents([])}
-                className={`min-h-[32px] px-2 sm:px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${
+                className={`min-h-[32px] px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${
                   activeIntents.length === 0
                     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500'
                     : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
@@ -589,7 +606,7 @@ function MainApp({ userId }: MainAppProps) {
                 <button
                   key={intent}
                   onClick={() => toggleIntent(intent)}
-                  className={`min-h-[32px] px-2 sm:px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${
+                  className={`min-h-[32px] px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${
                     activeIntents.includes(intent)
                       ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500'
                       : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
@@ -603,19 +620,19 @@ function MainApp({ userId }: MainAppProps) {
         </div>
       )}
 
-      {/* Age Filter Controls - Visible on Map and Venues tabs */}
+      {/* Age Filter Controls - Desktop */}
       {(activeTab === 'map' || activeTab === 'venues') && (
-        <div className="bg-slate-800/20 border-b border-slate-700 px-3 sm:px-4 py-2">
-          <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
+        <div className="hidden sm:block bg-slate-800/20 border-b border-slate-700 px-4 py-2">
+          <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-2">
             <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
               <Users size={12} />
               Alder:
             </span>
-            <div className="flex gap-1 sm:gap-1.5 flex-wrap justify-center">
+            <div className="flex gap-1.5 flex-wrap justify-center">
               {/* "Alle" button */}
               <button
                 onClick={() => setActiveAgeBands([])}
-                className={`min-h-[32px] px-2 sm:px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${
+                className={`min-h-[32px] px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${
                   activeAgeBands.length === 0
                     ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500'
                     : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
@@ -629,7 +646,7 @@ function MainApp({ userId }: MainAppProps) {
                 <button
                   key={band}
                   onClick={() => toggleAgeBand(band)}
-                  className={`min-h-[32px] px-2 sm:px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${
+                  className={`min-h-[32px] px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${
                     activeAgeBands.includes(band)
                       ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500'
                       : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
