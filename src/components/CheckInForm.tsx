@@ -27,7 +27,7 @@ type FormState = 'idle' | 'submitting' | 'success' | 'error';
 const VIBE_OPTIONS: VibeScore[] = ['hot', 'good', 'ok', 'quiet'];
 
 export function CheckInForm({ venues, selectedVenueId, onSubmit }: CheckInFormProps) {
-  const { profile, isLoaded } = useProfile();
+  const { localPrefs, isLoading } = useProfile();
   
   const [venueId, setVenueId] = useState(selectedVenueId || '');
   const [vibeScore, setVibeScore] = useState<VibeScore | ''>('');
@@ -47,19 +47,19 @@ export function CheckInForm({ venues, selectedVenueId, onSubmit }: CheckInFormPr
 
   // Apply profile defaults when profile is loaded (only on initial load)
   useEffect(() => {
-    if (isLoaded && !defaultsApplied) {
-      if (profile.defaultIntent) {
-        setIntent(profile.defaultIntent);
+    if (!isLoading && !defaultsApplied) {
+      if (localPrefs.defaultIntent) {
+        setIntent(localPrefs.defaultIntent);
       }
-      if (profile.defaultRelationshipStatus) {
-        setRelationshipStatus(profile.defaultRelationshipStatus);
+      if (localPrefs.defaultRelationshipStatus) {
+        setRelationshipStatus(localPrefs.defaultRelationshipStatus);
       }
-      if (profile.defaultOnsIntent) {
-        setOnsIntent(profile.defaultOnsIntent);
+      if (localPrefs.defaultOnsIntent) {
+        setOnsIntent(localPrefs.defaultOnsIntent);
       }
       setDefaultsApplied(true);
     }
-  }, [isLoaded, profile, defaultsApplied]);
+  }, [isLoading, localPrefs, defaultsApplied]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,9 +78,9 @@ export function CheckInForm({ venues, selectedVenueId, onSubmit }: CheckInFormPr
         setVenueId('');
         setVibeScore('');
         // Re-apply profile defaults after reset
-        setIntent(profile.defaultIntent || '');
-        setRelationshipStatus(profile.defaultRelationshipStatus);
-        setOnsIntent(profile.defaultOnsIntent);
+        setIntent(localPrefs.defaultIntent || '');
+        setRelationshipStatus(localPrefs.defaultRelationshipStatus);
+        setOnsIntent(localPrefs.defaultOnsIntent);
         setFormState('idle');
       }, 2000);
     } catch (err) {

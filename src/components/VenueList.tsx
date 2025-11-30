@@ -30,8 +30,8 @@ export function VenueList({ venues, checkIns, timeWindowMinutes, heatmapMode, ac
   
   // Get user's age band from profile
   const userAgeBand = useMemo(() => {
-    return getAgeBandFromBirthYear(profile.birthYear);
-  }, [profile.birthYear]);
+    return getAgeBandFromBirthYear(profile?.birthYear ?? null);
+  }, [profile?.birthYear]);
 
   // Determine target age bands for sorting
   // Priority: activeAgeBands > userAgeBand > default '25_30'

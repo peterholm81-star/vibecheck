@@ -36,10 +36,10 @@ export function MapView({ venues, checkIns, timeWindowMinutes, heatmapMode, onVe
   const [mapLoaded, setMapLoaded] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(DEFAULT_ZOOM);
   const cityName = useCityName();
-  const { profile } = useProfile();
+  const { localPrefs } = useProfile();
 
   // Use favorite city from profile if set, otherwise use geolocation
-  const effectiveCityName = profile.favoriteCity !== 'auto' ? profile.favoriteCity : cityName;
+  const effectiveCityName = localPrefs.favoriteCity !== 'auto' ? localPrefs.favoriteCity : cityName;
 
   // Generate heatmap data from check-ins based on current mode
   const heatmapData = useMemo(() => {
@@ -248,7 +248,7 @@ export function MapView({ venues, checkIns, timeWindowMinutes, heatmapMode, onVe
         </p>
         
         {/* Favorite city indicator */}
-        {profile.favoriteCity !== 'auto' && (
+        {localPrefs.favoriteCity !== 'auto' && (
           <div className="mt-2 pt-2 border-t border-slate-700">
             <span className="text-[11px] text-slate-400">
               Favorittby aktiv (endre i Profil)

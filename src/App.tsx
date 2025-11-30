@@ -246,8 +246,8 @@ function MainApp({ userId }: MainAppProps) {
     }
 
     // Get gender and age_band from profile
-    const gender = profile.gender;
-    const ageBand = getAgeBandFromBirthYear(profile.birthYear);
+    const gender = profile?.gender ?? null;
+    const ageBand = getAgeBandFromBirthYear(profile?.birthYear ?? null);
 
     // Create the check-in directly using the existing venue's ID
     // This avoids creating duplicate venues
