@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Map, List, PlusCircle, RefreshCw, AlertCircle, User, Heart, Flame, Activity, Zap, Users, Sparkles, BarChart3 } from 'lucide-react';
+import { Map, List, PlusCircle, RefreshCw, AlertCircle, User, Heart, Flame, Activity, Zap, Users, Sparkles, BarChart3, Search } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import { LoginPage } from './pages/LoginPage';
@@ -525,144 +525,150 @@ function MainApp({ userId }: MainAppProps) {
       )}
 
       {/* Desktop Filters - Full filter layout for larger screens */}
-      {/* Heatmap Mode Controls */}
       {(activeTab === 'map' || activeTab === 'venues') && (
-        <div className="hidden sm:block bg-slate-800/60 border-b border-slate-700 px-4 py-2">
-          <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-3">
-            <span className="text-sm text-slate-400 font-medium">Modus:</span>
-            <div className="flex gap-2 flex-wrap justify-center">
-              <button
-                onClick={() => setHeatmapMode('activity')}
-                className={`min-h-[36px] px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 active:scale-95 ${
-                  heatmapMode === 'activity'
-                    ? 'bg-violet-500/20 text-violet-300 border border-violet-500'
-                    : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
-                }`}
-              >
-                <Activity size={12} />
-                Aktivitet
-              </button>
-              <button
-                onClick={() => setHeatmapMode('single')}
-                className={`min-h-[36px] px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 active:scale-95 ${
-                  heatmapMode === 'single'
-                    ? 'bg-pink-500/20 text-pink-300 border border-pink-500'
-                    : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
-                }`}
-              >
-                <Heart size={12} />
-                Single
-              </button>
-              <button
-                onClick={() => setHeatmapMode('ons')}
-                className={`min-h-[36px] px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 active:scale-95 ${
-                  heatmapMode === 'ons'
-                    ? 'bg-orange-500/20 text-orange-300 border border-orange-500'
-                    : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
-                }`}
-              >
-                <Flame size={12} />
-                ONS
-              </button>
-              <button
-                onClick={() => setHeatmapMode('ons_boost')}
-                className={`min-h-[36px] px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 active:scale-95 ${
-                  heatmapMode === 'ons_boost'
-                    ? 'bg-red-500/20 text-red-300 border border-red-500'
-                    : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
-                }`}
-              >
-                <Zap size={12} />
-                ONS Boost
-              </button>
+        <div className="hidden sm:block bg-slate-800/60 border-b border-slate-700">
+          {/* Section Heading */}
+          <div className="max-w-4xl mx-auto px-4 pt-3 pb-1">
+            <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+              <Search size={14} className="text-violet-400" />
+              Hva søker du i dag?
+            </h3>
+          </div>
+
+          {/* Modus Filter Row */}
+          <div className="px-4 py-2">
+            <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-3">
+              <span className="text-sm text-slate-400 font-medium">Modus:</span>
+              <div className="flex gap-2 flex-wrap justify-center">
+                <button
+                  onClick={() => setHeatmapMode('activity')}
+                  className={`min-h-[36px] px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 active:scale-95 ${
+                    heatmapMode === 'activity'
+                      ? 'bg-violet-500/20 text-violet-300 border border-violet-500'
+                      : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
+                  }`}
+                >
+                  <Activity size={12} />
+                  Aktivitet
+                </button>
+                <button
+                  onClick={() => setHeatmapMode('single')}
+                  className={`min-h-[36px] px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 active:scale-95 ${
+                    heatmapMode === 'single'
+                      ? 'bg-pink-500/20 text-pink-300 border border-pink-500'
+                      : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
+                  }`}
+                >
+                  <Heart size={12} />
+                  Single
+                </button>
+                <button
+                  onClick={() => setHeatmapMode('ons')}
+                  className={`min-h-[36px] px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 active:scale-95 ${
+                    heatmapMode === 'ons'
+                      ? 'bg-orange-500/20 text-orange-300 border border-orange-500'
+                      : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
+                  }`}
+                >
+                  <Flame size={12} />
+                  ONS
+                </button>
+                <button
+                  onClick={() => setHeatmapMode('ons_boost')}
+                  className={`min-h-[36px] px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 active:scale-95 ${
+                    heatmapMode === 'ons_boost'
+                      ? 'bg-red-500/20 text-red-300 border border-red-500'
+                      : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
+                  }`}
+                >
+                  <Zap size={12} />
+                  ONS Boost
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Intent Filter Controls - Desktop */}
-      {(activeTab === 'map' || activeTab === 'venues') && (
-        <div className="hidden sm:block bg-slate-800/40 border-b border-slate-700 px-4 py-2">
-          <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-2">
-            <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
-              <Sparkles size={12} />
-              Stemning:
-            </span>
-            <div className="flex gap-1.5 flex-wrap justify-center">
-              {/* "Alle" button */}
-              <button
-                onClick={() => setActiveIntents([])}
-                className={`min-h-[32px] px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${
-                  activeIntents.length === 0
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500'
-                    : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
-                }`}
-              >
-                Alle
-              </button>
-              
-              {/* Intent buttons */}
-              {INTENT_OPTIONS.map((intent) => (
+          {/* Stemning Filter Row */}
+          <div className="bg-slate-800/40 px-4 py-2">
+            <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-2">
+              <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
+                <Sparkles size={12} />
+                Stemning:
+              </span>
+              <div className="flex gap-1.5 flex-wrap justify-center">
+                {/* "Alle" button */}
                 <button
-                  key={intent}
-                  onClick={() => toggleIntent(intent)}
+                  onClick={() => setActiveIntents([])}
                   className={`min-h-[32px] px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${
-                    activeIntents.includes(intent)
+                    activeIntents.length === 0
                       ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500'
                       : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
                   }`}
                 >
-                  {INTENT_LABELS[intent]}
+                  Alle
                 </button>
-              ))}
+                
+                {/* Intent buttons */}
+                {INTENT_OPTIONS.map((intent) => (
+                  <button
+                    key={intent}
+                    onClick={() => toggleIntent(intent)}
+                    className={`min-h-[32px] px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${
+                      activeIntents.includes(intent)
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500'
+                        : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
+                    }`}
+                  >
+                    {INTENT_LABELS[intent]}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Age Filter Controls - Desktop */}
-      {(activeTab === 'map' || activeTab === 'venues') && (
-        <div className="hidden sm:block bg-slate-800/20 border-b border-slate-700 px-4 py-2">
-          <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-2">
-            <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
-              <Users size={12} />
-              Alder:
-            </span>
-            <div className="flex gap-1.5 flex-wrap justify-center">
-              {/* "Alle" button */}
-              <button
-                onClick={() => setActiveAgeBands([])}
-                className={`min-h-[32px] px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${
-                  activeAgeBands.length === 0
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500'
-                    : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
-                }`}
-              >
-                Alle
-              </button>
-              
-              {/* Age band buttons */}
-              {AGE_BANDS_ORDER.map((band) => (
+          {/* Alder Filter Row */}
+          <div className="bg-slate-800/20 px-4 py-2 pb-3">
+            <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-2">
+              <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
+                <Users size={12} />
+                Alder:
+              </span>
+              <div className="flex gap-1.5 flex-wrap justify-center">
+                {/* "Alle" button */}
                 <button
-                  key={band}
-                  onClick={() => toggleAgeBand(band)}
+                  onClick={() => setActiveAgeBands([])}
                   className={`min-h-[32px] px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${
-                    activeAgeBands.includes(band)
+                    activeAgeBands.length === 0
                       ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500'
                       : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
                   }`}
                 >
-                  {AGE_BAND_LABELS[band]}
+                  Alle
                 </button>
-              ))}
+                
+                {/* Age band buttons */}
+                {AGE_BANDS_ORDER.map((band) => (
+                  <button
+                    key={band}
+                    onClick={() => toggleAgeBand(band)}
+                    className={`min-h-[32px] px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${
+                      activeAgeBands.includes(band)
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500'
+                        : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
+                    }`}
+                  >
+                    {AGE_BAND_LABELS[band]}
+                  </button>
+                ))}
+              </div>
+              
+              {/* Show count when filtering */}
+              {(activeAgeBands.length > 0 || activeIntents.length > 0) && (
+                <span className="text-xs text-slate-400">
+                  ({filteredCheckIns.length})
+                </span>
+              )}
             </div>
-            
-            {/* Show count when filtering */}
-            {(activeAgeBands.length > 0 || activeIntents.length > 0) && (
-              <span className="text-xs text-slate-400">
-                ({filteredCheckIns.length})
-              </span>
-            )}
           </div>
         </div>
       )}
