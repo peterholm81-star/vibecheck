@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { User, Save, CheckCircle, MapPin, Heart, Zap, AlertCircle, RefreshCw } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { User, Save, CheckCircle, MapPin, Heart, Zap, AlertCircle, RefreshCw, MapPinOff } from 'lucide-react';
 import {
   useProfile,
   GENDER_OPTIONS,
@@ -62,6 +62,42 @@ export function ProfileSettings() {
   const [showSaved, setShowSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  
+  // Geolocation permission state (for smart check-in warning)
+  const [geoPermission, setGeoPermission] = useState<'prompt' | 'granted' | 'denied' | 'unavailable'>('prompt');
+
+  // ============================================
+  // CHECK GEOLOCATION PERMISSION
+  // ============================================
+  
+  const checkGeoPermission = useCallback(async () => {
+    if (!navigator.geolocation) {
+      setGeoPermission('unavailable');
+      return;
+    }
+    
+    if (navigator.permissions) {
+      try {
+        const result = await navigator.permissions.query({ name: 'geolocation' });
+        setGeoPermission(result.state as 'prompt' | 'granted' | 'denied');
+        
+        // Listen for changes
+        result.addEventListener('change', () => {
+          setGeoPermission(result.state as 'prompt' | 'granted' | 'denied');
+        });
+      } catch {
+        // Permissions API not supported
+        setGeoPermission('prompt');
+      }
+    }
+  }, []);
+
+  // Check permission on mount and when smart check-in changes
+  useEffect(() => {
+    if (smartCheckinEnabled) {
+      checkGeoPermission();
+    }
+  }, [smartCheckinEnabled, checkGeoPermission]);
 
   // ============================================
   // SYNC FORM STATE WITH PROFILE
@@ -316,7 +352,7 @@ export function ProfileSettings() {
                     Smart check-in (beta)
                   </span>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Foreslå sjekk-inn når du er på et utested. Vi sjekker deg aldri inn uten at du trykker godkjenn.
+                    Sjekker deg inn automatisk når du er på et sted – kun når appen er åpen.
                   </p>
                 </div>
                 <div className="relative ml-4">
@@ -330,6 +366,18 @@ export function ProfileSettings() {
                   <div className="absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
                 </div>
               </label>
+              
+              {/* Geolocation permission warning */}
+              {smartCheckinEnabled && (geoPermission === 'denied' || geoPermission === 'unavailable') && (
+                <div className="mt-2 flex items-start gap-2 p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                  <MapPinOff size={14} className="text-amber-400 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-amber-300">
+                    {geoPermission === 'denied' 
+                      ? 'Smart check-in krever posisjonstilgang i nettleseren. Gi tilgang i nettleserinnstillinger.'
+                      : 'Geolocation er ikke tilgjengelig i denne nettleseren.'}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

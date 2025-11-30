@@ -11,7 +11,10 @@ import { VenueDetail } from './components/VenueDetail';
 import { CheckInForm } from './components/CheckInForm';
 import { ProfileSettings } from './components/ProfileSettings';
 import { MobileFilters } from './components/MobileFilters';
+import { ToastContainer } from './components/Toast';
 import { useProfile, type AgeBand } from './hooks/useProfile';
+import { useToast } from './hooks/useToast';
+import { useSmartCheckinEngine } from './hooks/useSmartCheckinEngine';
 import { getAgeBandFromBirthYear } from './utils/age';
 import { AGE_BAND_LABELS } from './utils/venueStats';
 import type { Venue, CheckIn, VibeScore, Intent, RelationshipStatus, OnsIntent, TimeWindow, HeatmapMode } from './types';
@@ -110,6 +113,9 @@ function MainApp({ userId }: MainAppProps) {
   // Get user profile for check-in defaults and filter initialization
   const { profile, localPrefs, isLoading: profileLoading } = useProfile();
   
+  // Toast notifications
+  const { toast, showSuccess, showError, dismissToast } = useToast();
+  
   // Track if profile defaults have been applied to filters (only apply once on first load)
   const profileDefaultsApplied = useRef(false);
 
@@ -181,6 +187,28 @@ function MainApp({ userId }: MainAppProps) {
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  // ============================================
+  // SMART CHECK-IN ENGINE
+  // Automatically checks in when user is at a venue
+  // ============================================
+  const { state: smartCheckinState } = useSmartCheckinEngine({
+    userId,
+    profile,
+    localPrefs: {
+      defaultIntent: localPrefs.defaultIntent,
+      defaultOnsIntent: localPrefs.defaultOnsIntent,
+    },
+    venues: state.venues,
+    onCheckin: (result) => {
+      if (result.success && result.venueName) {
+        showSuccess(`✅ Du er nå sjekket inn på ${result.venueName}`);
+      } else if (result.error) {
+        showError(`Smart check-in feilet: ${result.error}`);
+      }
+    },
+    onRefresh: fetchData,
+  });
 
   // ============================================
   // APPLY PROFILE DEFAULTS TO FILTERS (once on first load)
@@ -823,6 +851,9 @@ function MainApp({ userId }: MainAppProps) {
       <main className="flex-1 flex flex-col max-w-4xl mx-auto w-full px-3 sm:px-4 py-3 sm:py-4">
         {renderContent()}
       </main>
+
+      {/* Toast Notifications */}
+      <ToastContainer toast={toast} onDismiss={dismissToast} />
     </div>
   );
 }
