@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Map, List, PlusCircle, RefreshCw, AlertCircle, User, Heart, Flame, Activity, Zap, Users, Sparkles, BarChart3, Search } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
@@ -106,8 +106,11 @@ function MainApp({ userId }: MainAppProps) {
   const [lastCheckInVenueId, setLastCheckInVenueId] = useState<string | null>(null);
   const [lastCheckInAt, setLastCheckInAt] = useState<string | null>(null);
   
-  // Get user profile for check-in defaults
-  const { profile } = useProfile();
+  // Get user profile for check-in defaults and filter initialization
+  const { profile, localPrefs, isLoading: profileLoading } = useProfile();
+  
+  // Track if profile defaults have been applied to filters (only apply once on first load)
+  const profileDefaultsApplied = useRef(false);
 
   // Test function for check-in with external place
   async function handleTestCheckIn() {
@@ -177,6 +180,48 @@ function MainApp({ userId }: MainAppProps) {
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  // ============================================
+  // APPLY PROFILE DEFAULTS TO FILTERS (once on first load)
+  // This pre-populates "Hva søker du i dag?" filters based on user profile
+  // ============================================
+  useEffect(() => {
+    // Only apply defaults once, when profile is loaded
+    if (profileLoading || profileDefaultsApplied.current) {
+      return;
+    }
+
+    // Mark as applied to prevent re-applying on subsequent renders
+    profileDefaultsApplied.current = true;
+
+    // === MODUS / Mode filter ===
+    // Map defaultOnsIntent to heatmap mode
+    if (localPrefs.defaultOnsIntent) {
+      if (localPrefs.defaultOnsIntent === 'open') {
+        // User is open to ONS → show ONS mode
+        setHeatmapMode('ons');
+      } else if (localPrefs.defaultOnsIntent === 'maybe') {
+        // User is maybe interested → show Single mode
+        setHeatmapMode('single');
+      }
+      // 'not_interested' and 'prefer_not_to_say' → keep default 'activity'
+    }
+
+    // === STEMNING / Intent filter ===
+    // Use defaultIntent from localPrefs
+    if (localPrefs.defaultIntent) {
+      setActiveIntents([localPrefs.defaultIntent]);
+    }
+
+    // === ALDER / Age filter ===
+    // Derive age band from profile.birthYear
+    if (profile?.birthYear) {
+      const userAgeBand = getAgeBandFromBirthYear(profile.birthYear);
+      if (userAgeBand) {
+        setActiveAgeBands([userAgeBand]);
+      }
+    }
+  }, [profileLoading, profile, localPrefs]);
 
   // ============================================
   // FILTER PIPELINE - applies filters in order:
