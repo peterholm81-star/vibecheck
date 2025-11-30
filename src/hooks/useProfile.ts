@@ -40,6 +40,9 @@ export interface UserProfile {
   // Heatmap & feature flags (stored in Supabase)
   showAsSingle: boolean;
   smartCheckinEnabled: boolean;
+  
+  // Notification preferences
+  allowNotifications: boolean;
 }
 
 /**
@@ -64,6 +67,7 @@ interface ProfileDbRow {
   birth_year: number | null;
   show_as_single: boolean;
   smart_checkin_enabled: boolean;
+  allow_notifications: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -81,6 +85,7 @@ const emptyProfile: UserProfile = {
   relationshipStatus: null,
   showAsSingle: false,
   smartCheckinEnabled: false,
+  allowNotifications: false,
 };
 
 const emptyLocalPrefs: LocalPreferences = {
@@ -151,6 +156,7 @@ function dbRowToProfile(row: ProfileDbRow): UserProfile {
     relationshipStatus: row.relationship_status,
     showAsSingle: row.show_as_single ?? false,
     smartCheckinEnabled: row.smart_checkin_enabled ?? false,
+    allowNotifications: row.allow_notifications ?? false,
   };
 }
 
@@ -177,6 +183,9 @@ function profileToDbUpdates(updates: Partial<UserProfile>): Record<string, unkno
   }
   if (updates.smartCheckinEnabled !== undefined) {
     dbUpdates.smart_checkin_enabled = updates.smartCheckinEnabled;
+  }
+  if (updates.allowNotifications !== undefined) {
+    dbUpdates.allow_notifications = updates.allowNotifications;
   }
   
   return dbUpdates;
@@ -432,6 +441,7 @@ export function useCombinedProfile() {
     relationshipStatus: profile?.relationshipStatus ?? null,
     showAsSingle: profile?.showAsSingle ?? false,
     smartCheckinEnabled: profile?.smartCheckinEnabled ?? false,
+    allowNotifications: profile?.allowNotifications ?? false,
     // Local preferences (from localStorage)
     ...localPrefs,
   };
@@ -447,6 +457,7 @@ export function useCombinedProfile() {
     if (updates.relationshipStatus !== undefined) profileUpdates.relationshipStatus = updates.relationshipStatus;
     if (updates.showAsSingle !== undefined) profileUpdates.showAsSingle = updates.showAsSingle;
     if (updates.smartCheckinEnabled !== undefined) profileUpdates.smartCheckinEnabled = updates.smartCheckinEnabled;
+    if (updates.allowNotifications !== undefined) profileUpdates.allowNotifications = updates.allowNotifications;
 
     if (updates.defaultRelationshipStatus !== undefined) localUpdates.defaultRelationshipStatus = updates.defaultRelationshipStatus;
     if (updates.defaultOnsIntent !== undefined) localUpdates.defaultOnsIntent = updates.defaultOnsIntent;

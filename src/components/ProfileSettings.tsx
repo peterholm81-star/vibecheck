@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { User, Save, CheckCircle, MapPin, Heart, Zap, AlertCircle, RefreshCw, MapPinOff } from 'lucide-react';
+import { User, Save, CheckCircle, MapPin, Heart, Zap, AlertCircle, RefreshCw, MapPinOff, Bell } from 'lucide-react';
 import {
   useProfile,
   GENDER_OPTIONS,
@@ -51,6 +51,7 @@ export function ProfileSettings() {
   const [birthYear, setBirthYear] = useState<number | null>(null);
   const [showAsSingle, setShowAsSingle] = useState(false);
   const [smartCheckinEnabled, setSmartCheckinEnabled] = useState(false);
+  const [allowNotifications, setAllowNotifications] = useState(false);
   
   // Check-in defaults (stored in localStorage)
   const [defaultRelationshipStatus, setDefaultRelationshipStatus] = useState<RelationshipStatus | null>(null);
@@ -112,6 +113,7 @@ export function ProfileSettings() {
       setBirthYear(profile.birthYear);
       setShowAsSingle(profile.showAsSingle);
       setSmartCheckinEnabled(profile.smartCheckinEnabled);
+      setAllowNotifications(profile.allowNotifications);
     }
   }, [profile]);
 
@@ -140,6 +142,7 @@ export function ProfileSettings() {
         birthYear,
         showAsSingle,
         smartCheckinEnabled,
+        allowNotifications,
       });
 
       // Save local preferences
@@ -378,6 +381,40 @@ export function ProfileSettings() {
                   </p>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* ============================================
+              SECTION: Notifications
+              ============================================ */}
+          <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-600">
+            <h3 className="text-sm font-semibold text-slate-200 mb-4 flex items-center gap-2">
+              <Bell size={16} className="text-amber-400" />
+              Varsler
+            </h3>
+
+            {/* Allow Notifications Toggle */}
+            <div>
+              <label className="flex items-center justify-between cursor-pointer">
+                <div>
+                  <span className="text-sm font-medium text-slate-300">
+                    Tillat varsler fra VibeCheck
+                  </span>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Vi kan varsle deg når steder som matcher filtrene dine blir ekstra aktive. Du kan slå dette av når som helst.
+                  </p>
+                </div>
+                <div className="relative ml-4">
+                  <input
+                    type="checkbox"
+                    checked={allowNotifications}
+                    onChange={(e) => setAllowNotifications(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-600 rounded-full peer peer-checked:bg-amber-500 peer-focus:ring-2 peer-focus:ring-amber-500/50 transition-colors"></div>
+                  <div className="absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                </div>
+              </label>
             </div>
           </div>
 

@@ -490,6 +490,9 @@ function MainApp({ userId }: MainAppProps) {
             timeWindowMinutes={timeWindowMinutes}
             heatmapMode={heatmapMode}
             onVenueClick={handleVenueClick}
+            activeIntents={activeIntents}
+            activeAgeBands={activeAgeBands}
+            singlesOnly={singlesOnly}
           />
         );
 

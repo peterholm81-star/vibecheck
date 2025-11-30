@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { MapPin, RefreshCw } from 'lucide-react';
-import type { Venue, CheckIn, TimeWindow, HeatmapMode } from '../types';
+import { MapPin, RefreshCw, Bell, BellOff } from 'lucide-react';
+import type { Venue, CheckIn, TimeWindow, HeatmapMode, Intent } from '../types';
+import type { AgeBand } from '../hooks/useProfile';
 import { generateHeatmapData } from '../mocks/venues';
 import { useCityName } from '../hooks/useCityName';
 import { useProfile } from '../hooks/useProfile';
 import { useVenueHeatmap, getHeatmapColor, getHeatmapGlow, HEATMAP_MODE_COLORS, type HeatmapVenue, type HeatmapVenueMode } from '../hooks/useVenueHeatmap';
+import { useNotificationSession, type NotificationSessionFilters } from '../hooks/useNotificationSession';
 import {
   MAPBOX_TOKEN,
   MAP_STYLE,
@@ -143,19 +145,42 @@ interface MapViewProps {
   timeWindowMinutes: TimeWindow;
   heatmapMode: HeatmapMode;
   onVenueClick: (venueId: string) => void;
+  // Filter state for notification sessions
+  activeIntents?: Intent[];
+  activeAgeBands?: AgeBand[];
+  singlesOnly?: boolean;
 }
 
-export function MapView({ venues, checkIns, timeWindowMinutes, heatmapMode, onVenueClick }: MapViewProps) {
+export function MapView({ 
+  venues, 
+  checkIns, 
+  timeWindowMinutes, 
+  heatmapMode, 
+  onVenueClick,
+  activeIntents = [],
+  activeAgeBands = [],
+  singlesOnly = false,
+}: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(DEFAULT_ZOOM);
   const cityName = useCityName();
-  const { localPrefs } = useProfile();
+  const { profile, localPrefs } = useProfile();
 
   // Heatmap 2.0: Use the new venue heatmap hook for real scores
   const { heatmapVenues, isLoading: heatmapLoading, refresh: refreshHeatmap } = useVenueHeatmap();
+
+  // Notification session ("Live-varsler for kvelden")
+  const {
+    activeSessionId,
+    isActivating,
+    isDeactivating,
+    error: notificationError,
+    startSession,
+    stopSession,
+  } = useNotificationSession();
 
   // Use favorite city from profile if set, otherwise use geolocation
   const effectiveCityName = localPrefs.favoriteCity !== 'auto' ? localPrefs.favoriteCity : cityName;
@@ -449,6 +474,87 @@ export function MapView({ venues, checkIns, timeWindowMinutes, heatmapMode, onVe
             </span>
           </div>
         )}
+      </div>
+
+      {/* Live Notifications Panel - top right */}
+      <div className="absolute top-4 right-14 bg-slate-900/90 backdrop-blur-sm rounded-lg px-4 py-3 shadow-lg z-10 max-w-[280px]">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            {activeSessionId ? (
+              <Bell size={14} className="text-amber-400" />
+            ) : (
+              <BellOff size={14} className="text-slate-500" />
+            )}
+            <span className="text-sm font-semibold text-white">
+              Live-varsler
+            </span>
+          </div>
+          
+          {/* Toggle */}
+          <label className="relative cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!activeSessionId}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  // Build filters snapshot from current state
+                  const filters: NotificationSessionFilters = {
+                    heatmapMode,
+                    activeIntents,
+                    activeAgeBands,
+                    singlesOnly,
+                    timeWindowMinutes,
+                  };
+                  startSession({ filters });
+                } else {
+                  stopSession();
+                }
+              }}
+              disabled={isActivating || isDeactivating || !profile?.allowNotifications}
+              className="sr-only peer"
+            />
+            <div className={`w-9 h-5 rounded-full transition-colors ${
+              !profile?.allowNotifications 
+                ? 'bg-slate-700 cursor-not-allowed' 
+                : 'bg-slate-600 peer-checked:bg-amber-500 peer-focus:ring-2 peer-focus:ring-amber-500/50'
+            }`}></div>
+            <div className={`absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+              activeSessionId ? 'translate-x-4' : ''
+            } ${!profile?.allowNotifications ? 'opacity-50' : ''}`}></div>
+          </label>
+        </div>
+        
+        {/* Description / Status */}
+        <div className="mt-2">
+          {!profile?.allowNotifications ? (
+            <p className="text-[11px] text-amber-400">
+              Slå på varsler i "Min profil" for å bruke denne funksjonen.
+            </p>
+          ) : activeSessionId ? (
+            <p className="text-[11px] text-emerald-400">
+              ✅ Aktiv! Vi varsler deg når steder blir hot.
+            </p>
+          ) : (
+            <p className="text-[11px] text-slate-400">
+              Vi følger filtrene dine og kan varsle deg når steder matcher.
+            </p>
+          )}
+          
+          {/* Loading state */}
+          {(isActivating || isDeactivating) && (
+            <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
+              <RefreshCw size={10} className="animate-spin" />
+              {isActivating ? 'Starter...' : 'Stopper...'}
+            </p>
+          )}
+          
+          {/* Error state */}
+          {notificationError && (
+            <p className="text-[11px] text-red-400 mt-1">
+              {notificationError}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Legend - bottom left */}
