@@ -8,7 +8,26 @@ import {
   RELATIONSHIP_STATUS_LABELS,
   ONS_INTENT_LABELS,
 } from '../types';
-import { useProfile } from '../hooks/useProfile';
+import { useProfile, type ProfileRelationshipStatus } from '../hooks/useProfile';
+
+// ============================================
+// HELPER: Map profile relationship status to check-in relationship status
+// ProfileRelationshipStatus: single, in_relationship, open_relationship, prefer_not_to_say
+// RelationshipStatus: single, in_relationship, complicated, prefer_not_to_say
+// ============================================
+function mapProfileToCheckInRelationshipStatus(
+  profileStatus: ProfileRelationshipStatus | null
+): RelationshipStatus | null {
+  if (!profileStatus) return null;
+  
+  // Map 'open_relationship' to 'complicated' (closest semantic match)
+  if (profileStatus === 'open_relationship') {
+    return 'complicated';
+  }
+  
+  // Other values map directly
+  return profileStatus as RelationshipStatus;
+}
 
 interface CheckInFormProps {
   venues: Venue[];
@@ -27,7 +46,7 @@ type FormState = 'idle' | 'submitting' | 'success' | 'error';
 const VIBE_OPTIONS: VibeScore[] = ['hot', 'good', 'ok', 'quiet'];
 
 export function CheckInForm({ venues, selectedVenueId, onSubmit }: CheckInFormProps) {
-  const { localPrefs, isLoading } = useProfile();
+  const { profile, localPrefs, isLoading } = useProfile();
   
   const [venueId, setVenueId] = useState(selectedVenueId || '');
   const [vibeScore, setVibeScore] = useState<VibeScore | ''>('');
@@ -46,20 +65,32 @@ export function CheckInForm({ venues, selectedVenueId, onSubmit }: CheckInFormPr
   }, [selectedVenueId]);
 
   // Apply profile defaults when profile is loaded (only on initial load)
+  // Priority for relationship status:
+  //   1. profile.relationshipStatus (from Supabase profile)
+  //   2. localPrefs.defaultRelationshipStatus (from localStorage)
   useEffect(() => {
     if (!isLoading && !defaultsApplied) {
+      // Intent: use localStorage preference
       if (localPrefs.defaultIntent) {
         setIntent(localPrefs.defaultIntent);
       }
-      if (localPrefs.defaultRelationshipStatus) {
+      
+      // Relationship status: prefer profile over localStorage
+      // This ensures the user's actual relationship status is used in check-ins
+      if (profile?.relationshipStatus) {
+        setRelationshipStatus(mapProfileToCheckInRelationshipStatus(profile.relationshipStatus));
+      } else if (localPrefs.defaultRelationshipStatus) {
         setRelationshipStatus(localPrefs.defaultRelationshipStatus);
       }
+      
+      // ONS intent: use localStorage preference
       if (localPrefs.defaultOnsIntent) {
         setOnsIntent(localPrefs.defaultOnsIntent);
       }
+      
       setDefaultsApplied(true);
     }
-  }, [isLoading, localPrefs, defaultsApplied]);
+  }, [isLoading, profile, localPrefs, defaultsApplied]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,8 +109,13 @@ export function CheckInForm({ venues, selectedVenueId, onSubmit }: CheckInFormPr
         setVenueId('');
         setVibeScore('');
         // Re-apply profile defaults after reset
+        // Priority: profile.relationshipStatus > localPrefs.defaultRelationshipStatus
         setIntent(localPrefs.defaultIntent || '');
-        setRelationshipStatus(localPrefs.defaultRelationshipStatus);
+        setRelationshipStatus(
+          profile?.relationshipStatus
+            ? mapProfileToCheckInRelationshipStatus(profile.relationshipStatus)
+            : localPrefs.defaultRelationshipStatus
+        );
         setOnsIntent(localPrefs.defaultOnsIntent);
         setFormState('idle');
       }, 2000);
@@ -214,7 +250,7 @@ export function CheckInForm({ venues, selectedVenueId, onSubmit }: CheckInFormPr
           {/* ONS Intent (optional) */}
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">
-              One night stand? (valgfritt)
+              👉👌 ONS? (valgfritt)
             </label>
             <select
               value={onsIntent ?? ''}

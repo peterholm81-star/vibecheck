@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Activity, Heart, Flame, Zap, Sparkles, Users, ChevronDown, X, Search } from 'lucide-react';
+import { Activity, Heart, Zap, Sparkles, Users, ChevronDown, X, Search } from 'lucide-react';
 import type { Intent, HeatmapMode } from '../types';
 import { INTENT_LABELS, INTENT_OPTIONS } from '../types';
 import type { AgeBand } from '../hooks/useProfile';
@@ -18,19 +18,19 @@ import { AGE_BAND_LABELS } from '../utils/venueStats';
 // All age bands in order (same as App.tsx)
 const AGE_BANDS_ORDER: AgeBand[] = ['18_25', '25_30', '30_35', '35_40', '40_plus'];
 
-// Mode labels for display (Norwegian)
+// Mode labels for display (Norwegian) - using 👉👌 for ONS
 const MODE_LABELS: Record<HeatmapMode, string> = {
   activity: 'Aktivitet',
   single: 'Single',
-  ons: 'ONS',
-  ons_boost: 'ONS Boost',
+  ons: '👉👌 ONS',
+  ons_boost: '👉👌 ONS Boost',
 };
 
-// Mode icons
+// Mode icons (emojis for ONS modes)
 const MODE_ICONS: Record<HeatmapMode, React.ReactNode> = {
   activity: <Activity size={14} />,
   single: <Heart size={14} />,
-  ons: <Flame size={14} />,
+  ons: <span className="text-sm">👉👌</span>,
   ons_boost: <Zap size={14} />,
 };
 
@@ -56,6 +56,9 @@ interface MobileFiltersProps {
   activeAgeBands: AgeBand[];
   toggleAgeBand: (band: AgeBand) => void;
   clearAgeBands: () => void;
+  // Singles filter
+  singlesOnly: boolean;
+  setSinglesOnly: (value: boolean) => void;
   // Filter count for display
   filteredCount: number;
 }
@@ -69,12 +72,19 @@ export function MobileFilters({
   activeAgeBands,
   toggleAgeBand,
   clearAgeBands,
+  singlesOnly,
+  setSinglesOnly,
   filteredCount,
 }: MobileFiltersProps) {
   const [activePanel, setActivePanel] = useState<FilterPanel>(null);
 
   // Get short display label for current mode selection
-  const getModeSubLabel = () => MODE_LABELS[heatmapMode];
+  const getModeSubLabel = () => {
+    // For ONS modes, return shorter label without emoji (emoji is shown in icon)
+    if (heatmapMode === 'ons') return 'ONS';
+    if (heatmapMode === 'ons_boost') return 'Boost';
+    return MODE_LABELS[heatmapMode];
+  };
 
   // Get short display label for current intent selection
   const getIntentSubLabel = () => {
@@ -106,7 +116,7 @@ export function MobileFilters({
   };
 
   // Check if any filters are active (non-default)
-  const hasActiveFilters = activeIntents.length > 0 || activeAgeBands.length > 0;
+  const hasActiveFilters = activeIntents.length > 0 || activeAgeBands.length > 0 || singlesOnly;
 
   return (
     <div className="bg-slate-800/80 border-b border-slate-700">
@@ -183,22 +193,38 @@ export function MobileFilters({
           </button>
         </div>
 
-        {/* Filter count indicator */}
-        {hasActiveFilters && (
-          <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
-            <span>{filteredCount} check-ins matcher</span>
-            <button
-              onClick={() => {
-                clearIntents();
-                clearAgeBands();
-              }}
-              className="text-slate-400 hover:text-white flex items-center gap-1 px-2 py-1 -mr-2"
-            >
-              <X size={12} />
-              Nullstill
-            </button>
-          </div>
-        )}
+        {/* Singles Toggle - Quick filter button */}
+        <div className="mt-2 flex items-center justify-between">
+          <button
+            onClick={() => setSinglesOnly(!singlesOnly)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+              singlesOnly
+                ? 'bg-pink-500/20 text-pink-300 border-pink-500'
+                : 'bg-slate-700/50 text-slate-400 border-slate-600 hover:border-slate-500'
+            }`}
+          >
+            <Heart size={12} />
+            Single
+          </button>
+
+          {/* Filter count indicator */}
+          {hasActiveFilters && (
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <span>{filteredCount} matcher</span>
+              <button
+                onClick={() => {
+                  clearIntents();
+                  clearAgeBands();
+                  setSinglesOnly(false);
+                }}
+                className="text-slate-400 hover:text-white flex items-center gap-1 px-2 py-1 -mr-2"
+              >
+                <X size={12} />
+                Nullstill
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ============================================

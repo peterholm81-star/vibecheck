@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Map, List, PlusCircle, RefreshCw, AlertCircle, User, Heart, Flame, Activity, Zap, Users, Sparkles, BarChart3, Search } from 'lucide-react';
+import { Map, List, PlusCircle, RefreshCw, AlertCircle, User, Heart, Activity, Users, Sparkles, BarChart3, Search } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import { LoginPage } from './pages/LoginPage';
@@ -100,6 +100,7 @@ function MainApp({ userId }: MainAppProps) {
   const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>('activity');
   const [activeAgeBands, setActiveAgeBands] = useState<AgeBand[]>([]);
   const [activeIntents, setActiveIntents] = useState<Intent[]>([]);
+  const [singlesOnly, setSinglesOnly] = useState(false); // Filter for single users only
   const [preselectedVenueId, setPreselectedVenueId] = useState<string | null>(null);
   
   // Track last check-in for cooldown (3 hours per venue)
@@ -226,31 +227,39 @@ function MainApp({ userId }: MainAppProps) {
   // ============================================
   // FILTER PIPELINE - applies filters in order:
   // 1. Time window (60/120/180 min)
-  // 2. Age bands (if selected)
-  // 3. Intents (if selected)
+  // 2. Singles only (if enabled)
+  // 3. Age bands (if selected)
+  // 4. Intents (if selected)
   // Note: City/favoriteCity filter could be added here
   // ============================================
   const filteredCheckIns = useMemo(() => {
     // Step 1: Filter by time window
     let filtered = filterCheckInsByTime(state.checkIns, timeWindowMinutes);
     
-    // Step 2: Apply age band filter if any are selected
+    // Step 2: Apply singles-only filter if enabled
+    // A check-in counts as "single" if relationship_status === 'single'
+    // (The showAsSingle flag was already applied when creating the check-in)
+    if (singlesOnly) {
+      filtered = filtered.filter((c) => c.relationshipStatus === 'single');
+    }
+    
+    // Step 3: Apply age band filter if any are selected
     if (activeAgeBands.length > 0) {
       filtered = filtered.filter((c) => {
         return c.ageBand && activeAgeBands.includes(c.ageBand);
       });
     }
     
-    // Step 3: Apply intent filter if any are selected
+    // Step 4: Apply intent filter if any are selected
     if (activeIntents.length > 0) {
       filtered = filtered.filter((c) => activeIntents.includes(c.intent));
     }
     
     return filtered;
-  }, [state.checkIns, timeWindowMinutes, activeAgeBands, activeIntents]);
+  }, [state.checkIns, timeWindowMinutes, singlesOnly, activeAgeBands, activeIntents]);
 
   // Check if any filters are active
-  const hasActiveFilters = activeAgeBands.length > 0 || activeIntents.length > 0;
+  const hasActiveFilters = activeAgeBands.length > 0 || activeIntents.length > 0 || singlesOnly;
 
   // Toggle age band in filter
   const toggleAgeBand = useCallback((band: AgeBand) => {
@@ -277,6 +286,25 @@ function MainApp({ userId }: MainAppProps) {
   // Handle check-in submission for an existing venue
   // Since the user selects from existing venues in the dropdown,
   // we already have the venueId - no need to create a new venue.
+  //
+  // Profile data is used as defaults for check-in fields:
+  // - gender: from profile.gender
+  // - ageBand: derived from profile.birthYear
+  // - relationshipStatus: form value (already prefilled from profile)
+  //
+  // The "single in heatmap" logic:
+  // A user counts as "single" if:
+  //   - profile.showAsSingle === true, OR
+  //   - profile.relationshipStatus === 'single'
+  // This is stored via the relationshipStatus field in check_ins.
+  // Future heatmap queries can filter by relationship_status = 'single'.
+  //
+  // NOTE: The check_ins table should have columns for:
+  //   - relationship_status (text/enum)
+  //   - gender (text/enum)
+  //   - age_band (text/enum)
+  //   - ons_intent (text/enum)
+  // If these columns are missing, consider adding a migration.
   const handleCheckInSubmit = async (
     venueId: string,
     vibeScore: VibeScore,
@@ -290,9 +318,24 @@ function MainApp({ userId }: MainAppProps) {
       throw new Error('Venue not found');
     }
 
-    // Get gender and age_band from profile
+    // ============================================
+    // DERIVE CHECK-IN DATA FROM PROFILE
+    // ============================================
+    
+    // Gender: directly from profile
     const gender = profile?.gender ?? null;
+    
+    // Age band: derived from profile.birthYear
     const ageBand = getAgeBandFromBirthYear(profile?.birthYear ?? null);
+    
+    // Relationship status for check-in:
+    // If user has showAsSingle=true in profile, force 'single' status
+    // This allows users in open relationships to appear as single in heatmap
+    let effectiveRelationshipStatus = relationshipStatus;
+    if (profile?.showAsSingle === true && relationshipStatus !== 'single') {
+      // User wants to appear as single in heatmap
+      effectiveRelationshipStatus = 'single';
+    }
 
     // Create the check-in directly using the existing venue's ID
     // This avoids creating duplicate venues
@@ -301,7 +344,7 @@ function MainApp({ userId }: MainAppProps) {
       venueId: venue.id,
       intent,
       vibeScore,
-      relationshipStatus,
+      relationshipStatus: effectiveRelationshipStatus,
       onsIntent,
       gender,
       ageBand,
@@ -564,6 +607,8 @@ function MainApp({ userId }: MainAppProps) {
             activeAgeBands={activeAgeBands}
             toggleAgeBand={toggleAgeBand}
             clearAgeBands={() => setActiveAgeBands([])}
+            singlesOnly={singlesOnly}
+            setSinglesOnly={setSinglesOnly}
             filteredCount={filteredCheckIns.length}
           />
         </div>
@@ -615,7 +660,7 @@ function MainApp({ userId }: MainAppProps) {
                       : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
                   }`}
                 >
-                  <Flame size={12} />
+                  <span className="text-sm">👉👌</span>
                   ONS
                 </button>
                 <button
@@ -626,8 +671,24 @@ function MainApp({ userId }: MainAppProps) {
                       : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
                   }`}
                 >
-                  <Zap size={12} />
+                  <span className="text-sm">👉👌</span>
                   ONS Boost
+                </button>
+              </div>
+              
+              {/* Singles Filter Toggle */}
+              <div className="border-l border-slate-600 pl-3 ml-1">
+                <button
+                  onClick={() => setSinglesOnly(!singlesOnly)}
+                  className={`min-h-[36px] px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 active:scale-95 ${
+                    singlesOnly
+                      ? 'bg-pink-500/20 text-pink-300 border border-pink-500'
+                      : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
+                  }`}
+                  title="Vis kun steder der single er sjekket inn"
+                >
+                  <Heart size={12} />
+                  Kun single
                 </button>
               </div>
             </div>
@@ -730,6 +791,7 @@ function MainApp({ userId }: MainAppProps) {
               onClick={() => {
                 setActiveAgeBands([]);
                 setActiveIntents([]);
+                setSinglesOnly(false);
               }}
               className="text-amber-300 hover:text-amber-100 text-xs sm:text-sm font-medium min-h-[36px] px-3 py-1.5 rounded-lg active:bg-amber-900/30"
             >

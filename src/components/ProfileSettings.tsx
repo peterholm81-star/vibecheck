@@ -385,7 +385,7 @@ export function ProfileSettings() {
           {/* Default ONS Intent */}
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">
-              Standard one night stand-intent
+              Standard 👉👌 ONS-intent
             </label>
             <select
               value={defaultOnsIntent ?? ''}
