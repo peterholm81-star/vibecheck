@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { MapPin } from 'lucide-react';
+import { MapPin, RefreshCw } from 'lucide-react';
 import type { Venue, CheckIn, TimeWindow, HeatmapMode } from '../types';
 import { generateHeatmapData } from '../mocks/venues';
 import { useCityName } from '../hooks/useCityName';
 import { useProfile } from '../hooks/useProfile';
+import { useVenueHeatmap, getHeatmapColor, getHeatmapGlow, HEATMAP_MODE_COLORS, type HeatmapVenue, type HeatmapVenueMode } from '../hooks/useVenueHeatmap';
 import {
   MAPBOX_TOKEN,
   MAP_STYLE,
@@ -20,6 +21,121 @@ import {
 
 // Set Mapbox access token
 mapboxgl.accessToken = MAPBOX_TOKEN;
+
+// ============================================
+// HEATMAP 2.0: Mode-based color schemes
+// ============================================
+
+/**
+ * Get heatmap color expression based on the selected mode.
+ * Each mode has a distinct color gradient.
+ */
+function getModeHeatmapColors(mode: HeatmapMode): mapboxgl.Expression {
+  switch (mode) {
+    case 'single':
+      // Pink/warm gradient for singles
+      return [
+        'interpolate',
+        ['linear'],
+        ['heatmap-density'],
+        0, 'rgba(0, 0, 0, 0)',
+        0.2, 'rgba(254, 205, 211, 0.4)',
+        0.4, 'rgba(251, 146, 60, 0.6)',
+        0.6, 'rgba(249, 115, 22, 0.8)',
+        0.8, 'rgba(234, 88, 12, 0.9)',
+        1, 'rgba(220, 38, 38, 1)',
+      ] as mapboxgl.Expression;
+    
+    case 'ons':
+      // Hot red gradient for ONS
+      return [
+        'interpolate',
+        ['linear'],
+        ['heatmap-density'],
+        0, 'rgba(0, 0, 0, 0)',
+        0.2, 'rgba(254, 202, 202, 0.4)',
+        0.4, 'rgba(252, 165, 165, 0.6)',
+        0.6, 'rgba(248, 113, 113, 0.8)',
+        0.8, 'rgba(239, 68, 68, 0.9)',
+        1, 'rgba(185, 28, 28, 1)',
+      ] as mapboxgl.Expression;
+    
+    case 'ons_boost':
+      // Intense red/crimson for ONS boost
+      return [
+        'interpolate',
+        ['linear'],
+        ['heatmap-density'],
+        0, 'rgba(0, 0, 0, 0)',
+        0.2, 'rgba(254, 178, 178, 0.5)',
+        0.4, 'rgba(248, 113, 113, 0.7)',
+        0.6, 'rgba(239, 68, 68, 0.85)',
+        0.8, 'rgba(220, 38, 38, 0.95)',
+        1, 'rgba(153, 27, 27, 1)',
+      ] as mapboxgl.Expression;
+    
+    case 'activity':
+    default:
+      // Default multi-color gradient (cool to hot)
+      return HEATMAP_COLORS as mapboxgl.Expression;
+  }
+}
+
+/**
+ * Get marker background gradient based on mode and intensity.
+ */
+function getMarkerColorForMode(mode: HeatmapVenueMode, intensity: number): string {
+  const colors = HEATMAP_MODE_COLORS[mode];
+  
+  // For low intensity, use a more muted version
+  if (intensity < 0.3) {
+    return `linear-gradient(135deg, ${colors.primary}80 0%, ${colors.primary}60 100%)`;
+  }
+  
+  return colors.gradient;
+}
+
+/**
+ * Build popup stats HTML based on heatmap data.
+ */
+function buildPopupStats(heatmapData: HeatmapVenue | undefined, fallbackCount: number): string {
+  if (!heatmapData || heatmapData.totalCheckins === 0) {
+    if (fallbackCount > 0) {
+      return `<div class="venue-popup-stats">${fallbackCount} check-in${fallbackCount !== 1 ? 's' : ''}</div>`;
+    }
+    return '<div class="venue-popup-stats" style="color: #94a3b8;">Ingen nylige check-ins</div>';
+  }
+
+  const { totalCheckins, singleRatio, onsRatio, partyRatio, chillRatio, mode } = heatmapData;
+  
+  // Format percentages
+  const formatPct = (ratio: number) => Math.round(ratio * 100);
+  
+  // Build stats line
+  const statParts: string[] = [];
+  
+  if (singleRatio >= 0.3) {
+    statParts.push(`💘 ${formatPct(singleRatio)}% single`);
+  }
+  if (onsRatio >= 0.2) {
+    statParts.push(`🔥 ${formatPct(onsRatio)}% ONS`);
+  }
+  if (partyRatio >= 0.3) {
+    statParts.push(`🎉 ${formatPct(partyRatio)}% party`);
+  }
+  if (chillRatio >= 0.3) {
+    statParts.push(`😌 ${formatPct(chillRatio)}% chill`);
+  }
+
+  const modeColor = getHeatmapColor(mode);
+  
+  return `
+    <div class="venue-popup-stats" style="color: ${modeColor};">
+      ${totalCheckins} check-in${totalCheckins !== 1 ? 's' : ''} (90 min)
+    </div>
+    ${statParts.length > 0 ? `<div class="venue-popup-details">${statParts.join(' • ')}</div>` : ''}
+  `;
+}
 
 interface MapViewProps {
   venues: Venue[];
@@ -38,13 +154,55 @@ export function MapView({ venues, checkIns, timeWindowMinutes, heatmapMode, onVe
   const cityName = useCityName();
   const { localPrefs } = useProfile();
 
+  // Heatmap 2.0: Use the new venue heatmap hook for real scores
+  const { heatmapVenues, isLoading: heatmapLoading, refresh: refreshHeatmap } = useVenueHeatmap();
+
   // Use favorite city from profile if set, otherwise use geolocation
   const effectiveCityName = localPrefs.favoriteCity !== 'auto' ? localPrefs.favoriteCity : cityName;
 
   // Generate heatmap data from check-ins based on current mode
+  // This is used as fallback/legacy data
   const heatmapData = useMemo(() => {
     return generateHeatmapData(venues, checkIns, timeWindowMinutes, heatmapMode);
   }, [venues, checkIns, timeWindowMinutes, heatmapMode]);
+  
+  // Heatmap 2.0: Convert heatmapVenues to GeoJSON with mode-aware weights
+  const heatmapVenueGeoJSON = useMemo<GeoJSON.FeatureCollection>(() => {
+    // Filter venues based on the selected mode
+    const filteredVenues = heatmapVenues.filter(v => v.totalCheckins > 0);
+    
+    return {
+      type: 'FeatureCollection',
+      features: filteredVenues.map((venue, index) => {
+        // Calculate weight based on mode
+        let weight = venue.intensity;
+        
+        // Boost weight based on selected heatmap mode
+        if (heatmapMode === 'single' && venue.singleRatio > 0.3) {
+          weight = Math.min(1, venue.singleRatio * 1.5);
+        } else if (heatmapMode === 'ons' && venue.onsRatio > 0.2) {
+          weight = Math.min(1, venue.onsRatio * 2);
+        } else if (heatmapMode === 'ons_boost' && venue.onsRatio > 0.3) {
+          weight = Math.min(1, venue.onsRatio * 2.5);
+        }
+        
+        return {
+          type: 'Feature',
+          properties: {
+            weight,
+            mode: venue.mode,
+            name: venue.name,
+            totalCheckins: venue.totalCheckins,
+          },
+          geometry: {
+            type: 'Point',
+            coordinates: [venue.lng, venue.lat],
+          },
+          id: index,
+        };
+      }),
+    };
+  }, [heatmapVenues, heatmapMode]);
 
   // Convert heatmap points to GeoJSON
   const heatmapGeoJSON = useMemo<GeoJSON.FeatureCollection>(() => ({
@@ -105,6 +263,7 @@ export function MapView({ venues, checkIns, timeWindowMinutes, heatmapMode, onVe
   }, []);
 
   // Add/update heatmap layer when map is loaded and data changes
+  // Heatmap 2.0: Now uses heatmapVenueGeoJSON from the new hook
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
 
@@ -119,11 +278,18 @@ export function MapView({ venues, checkIns, timeWindowMinutes, heatmapMode, onVe
       map.current.removeSource(sourceId);
     }
 
+    // Determine which data source to use
+    // Use Heatmap 2.0 data if available, otherwise fall back to legacy
+    const geoData = heatmapVenueGeoJSON.features.length > 0 ? heatmapVenueGeoJSON : heatmapGeoJSON;
+
     // Add new source
     map.current.addSource(sourceId, {
       type: 'geojson',
-      data: heatmapGeoJSON,
+      data: geoData,
     });
+
+    // Select color scheme based on heatmap mode
+    const modeColors = getModeHeatmapColors(heatmapMode);
 
     // Add heatmap layer
     // The heatmap visualizes check-in density and intensity
@@ -140,9 +306,8 @@ export function MapView({ venues, checkIns, timeWindowMinutes, heatmapMode, onVe
         // This compensates for the visual effect of zooming
         'heatmap-intensity': HEATMAP_INTENSITY as mapboxgl.Expression,
         
-        // Color gradient from cool to hot
-        // Based on point density (heatmap-density)
-        'heatmap-color': HEATMAP_COLORS as mapboxgl.Expression,
+        // Color gradient based on mode
+        'heatmap-color': modeColors as mapboxgl.Expression,
         
         // Radius of influence per point
         // Increases with zoom for consistent visual coverage
@@ -152,9 +317,10 @@ export function MapView({ venues, checkIns, timeWindowMinutes, heatmapMode, onVe
         'heatmap-opacity': HEATMAP_OPACITY as mapboxgl.Expression,
       },
     });
-  }, [mapLoaded, heatmapGeoJSON]);
+  }, [mapLoaded, heatmapVenueGeoJSON, heatmapGeoJSON, heatmapMode]);
 
   // Add/remove venue markers based on zoom level
+  // Heatmap 2.0: Now uses heatmapVenues with mode-based colors
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
 
@@ -165,7 +331,11 @@ export function MapView({ venues, checkIns, timeWindowMinutes, heatmapMode, onVe
     // Only show markers above threshold zoom
     if (currentZoom < MARKER_ZOOM_THRESHOLD) return;
 
-    // Calculate check-in counts per venue for the badge
+    // Create a map of heatmap data for quick lookup
+    const heatmapMap = new Map<string, HeatmapVenue>();
+    heatmapVenues.forEach(v => heatmapMap.set(v.id, v));
+
+    // Calculate check-in counts per venue for the badge (legacy fallback)
     const venueCounts = new Map<string, number>();
     checkIns.forEach(c => {
       venueCounts.set(c.venueId, (venueCounts.get(c.venueId) || 0) + 1);
@@ -173,22 +343,33 @@ export function MapView({ venues, checkIns, timeWindowMinutes, heatmapMode, onVe
 
     // Create markers for each venue
     venues.forEach(venue => {
-      const count = venueCounts.get(venue.id) || 0;
+      // Get heatmap data for this venue
+      const heatmapData = heatmapMap.get(venue.id);
+      const count = heatmapData?.totalCheckins ?? venueCounts.get(venue.id) ?? 0;
+      const mode = heatmapData?.mode ?? 'neutral';
+      const intensity = heatmapData?.intensity ?? 0;
       
-      // Create marker element
+      // Get color based on mode
+      const markerColor = getMarkerColorForMode(mode, intensity);
+      const glowColor = getHeatmapGlow(mode);
+      
+      // Create marker element with mode-based styling
       const el = document.createElement('div');
       el.className = 'venue-marker';
       el.innerHTML = `
         <div class="venue-marker-inner">
-          <div class="venue-marker-icon">
+          <div class="venue-marker-icon" style="background: ${markerColor}; box-shadow: 0 4px 12px ${glowColor};">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
               <circle cx="12" cy="10" r="3"></circle>
             </svg>
           </div>
-          ${count > 0 ? `<div class="venue-marker-badge">${count}</div>` : ''}
+          ${count > 0 ? `<div class="venue-marker-badge" style="background: ${getHeatmapColor(mode)};">${count}</div>` : ''}
         </div>
       `;
+
+      // Build popup content with stats
+      const statsHtml = buildPopupStats(heatmapData, count);
 
       // Create popup
       const popup = new mapboxgl.Popup({
@@ -199,7 +380,7 @@ export function MapView({ venues, checkIns, timeWindowMinutes, heatmapMode, onVe
         <div class="venue-popup">
           <div class="venue-popup-name">${venue.name}</div>
           <div class="venue-popup-address">${venue.address}</div>
-          <div class="venue-popup-stats">${count} check-in${count !== 1 ? 's' : ''} (1hr)</div>
+          ${statsHtml}
         </div>
       `);
 
@@ -224,13 +405,25 @@ export function MapView({ venues, checkIns, timeWindowMinutes, heatmapMode, onVe
 
       markersRef.current.push(marker);
     });
-  }, [mapLoaded, currentZoom, venues, checkIns, onVenueClick]);
+  }, [mapLoaded, currentZoom, venues, checkIns, heatmapVenues, onVenueClick]);
 
   // Calculate active venues count
+  // Heatmap 2.0: Prefer heatmapVenues data if available
   const activeVenueCount = useMemo(() => {
+    // Use heatmapVenues if we have data
+    const activeFromHeatmap = heatmapVenues.filter(v => v.totalCheckins > 0).length;
+    if (activeFromHeatmap > 0) {
+      return activeFromHeatmap;
+    }
+    // Fallback to legacy count
     const activeVenues = new Set(checkIns.map(c => c.venueId));
     return activeVenues.size;
-  }, [checkIns]);
+  }, [heatmapVenues, checkIns]);
+
+  // Total check-ins from heatmap data
+  const totalRecentCheckins = useMemo(() => {
+    return heatmapVenues.reduce((sum, v) => sum + v.totalCheckins, 0);
+  }, [heatmapVenues]);
 
   return (
     <div className="flex-1 relative rounded-xl overflow-hidden">
@@ -242,9 +435,10 @@ export function MapView({ venues, checkIns, timeWindowMinutes, heatmapMode, onVe
         <h2 className="text-sm font-semibold text-white flex items-center gap-2">
           <MapPin size={14} className="text-violet-400" />
           {effectiveCityName} Nightlife
+          {heatmapLoading && <RefreshCw size={12} className="text-violet-400 animate-spin" />}
         </h2>
         <p className="text-xs text-slate-300 mt-0.5">
-          {activeVenueCount} active venue{activeVenueCount !== 1 ? 's' : ''} • {checkIns.length} check-in{checkIns.length !== 1 ? 's' : ''}
+          {activeVenueCount} active venue{activeVenueCount !== 1 ? 's' : ''} • {totalRecentCheckins || checkIns.length} check-in{(totalRecentCheckins || checkIns.length) !== 1 ? 's' : ''} (90 min)
         </p>
         
         {/* Favorite city indicator */}
@@ -361,6 +555,12 @@ export function MapView({ venues, checkIns, timeWindowMinutes, heatmapMode, onVe
           color: #7c3aed;
           font-weight: 500;
           margin-top: 4px;
+        }
+        .venue-popup-details {
+          font-size: 10px;
+          color: #64748b;
+          margin-top: 4px;
+          line-height: 1.4;
         }
         .mapboxgl-popup-content {
           padding: 12px;
