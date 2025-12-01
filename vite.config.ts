@@ -38,6 +38,8 @@ export default defineConfig({
         // Don't cache Supabase API calls - let them go to network
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api/, /supabase/],
+        // Increase max file size to cache (default is 2MB, our bundle is ~2.1MB)
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB
       },
       devOptions: {
         enabled: true, // Enable PWA in dev for testing
