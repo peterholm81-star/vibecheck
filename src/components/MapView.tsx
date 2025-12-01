@@ -29,7 +29,6 @@ import {
   DesktopLiveAlertsPanel,
   OnsIndicator,
   DesktopLegend,
-  MobileInfoButton,
 } from './map/MapOverlays';
 
 // Set Mapbox access token
@@ -506,18 +505,6 @@ export function MapView({
             activeVenueCount={activeVenueCount}
             totalCheckins={totalRecentCheckins || checkIns.length}
             isLoading={heatmapLoading}
-          />
-
-          {/* Info button - positioned below the top bar */}
-          <MobileInfoButton
-            cityName={effectiveCityName}
-            activeVenueCount={activeVenueCount}
-            totalCheckins={totalRecentCheckins || checkIns.length}
-            heatmapMode={heatmapMode}
-            isNotificationsActive={!!activeSessionId}
-            isNotificationsEnabled={!!profile?.allowNotifications}
-            onNotificationsToggle={handleMobileNotificationToggle}
-            hasFavoriteCity={localPrefs.favoriteCity !== 'auto'}
           />
 
           {/* Notification toggle button (top right) */}

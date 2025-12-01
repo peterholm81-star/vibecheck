@@ -1,9 +1,8 @@
-import { useState } from 'react';
-import { MapPin, Bell, BellOff, RefreshCw, ChevronDown, Info, X } from 'lucide-react';
+import { MapPin, Bell, BellOff, RefreshCw } from 'lucide-react';
 import type { HeatmapMode } from '../../types';
 
 // ============================================
-// MOBILE-FRIENDLY MAP OVERLAY COMPONENTS
+// MAP OVERLAY COMPONENTS
 // ============================================
 // Clean, minimal overlays that don't block the map.
 // Mobile: Small pills/chips positioned to avoid Mapbox controls
@@ -12,7 +11,7 @@ import type { HeatmapMode } from '../../types';
 
 // ============================================
 // 1. MOBILE TOP BAR
-// A slim bar at the top showing the city name
+// A slim bar at the top showing the city name and stats
 // ============================================
 
 interface MobileTopBarProps {
@@ -30,7 +29,7 @@ export function MobileTopBar({
 }: MobileTopBarProps) {
   return (
     <div className="absolute top-2 left-2 right-14 flex items-center gap-2 z-10">
-      {/* City name pill - clean, no extra background */}
+      {/* City name pill */}
       <div className="bg-slate-900/90 backdrop-blur-sm rounded-full px-3 py-1.5 shadow-lg flex items-center gap-1.5">
         <MapPin size={12} className="text-violet-400" />
         <span className="text-xs font-semibold text-white truncate">
@@ -294,151 +293,5 @@ export function DesktopLegend({ heatmapMode }: DesktopLegendProps) {
         </span>
       </div>
     </div>
-  );
-}
-
-// ============================================
-// 7. MOBILE INFO BUTTON
-// A clean button positioned below the location pill
-// Opens a bottom sheet with detailed info
-// ============================================
-
-interface MobileInfoButtonProps {
-  cityName: string;
-  activeVenueCount: number;
-  totalCheckins: number;
-  heatmapMode: HeatmapMode;
-  isNotificationsActive: boolean;
-  isNotificationsEnabled: boolean;
-  onNotificationsToggle: () => void;
-  hasFavoriteCity: boolean;
-}
-
-export function MobileInfoButton({
-  cityName,
-  activeVenueCount,
-  totalCheckins,
-  heatmapMode,
-  isNotificationsActive,
-  isNotificationsEnabled,
-  onNotificationsToggle,
-  hasFavoriteCity,
-}: MobileInfoButtonProps) {
-  const [isOpen, setIsOpen] = useState(false);
-
-  return (
-    <>
-      {/* Info button - positioned below the top bar, left side */}
-      <button
-        onClick={() => setIsOpen(true)}
-        className="absolute top-12 left-2 z-10 bg-slate-900/90 rounded-full px-3 py-1.5 shadow-lg flex items-center gap-1.5 min-h-[32px]"
-      >
-        <Info size={12} className="text-violet-400" />
-        <span className="text-[11px] font-medium text-slate-300">Info</span>
-        <ChevronDown size={10} className="text-slate-400" />
-      </button>
-
-      {/* Bottom sheet overlay */}
-      {isOpen && (
-        <div 
-          className="fixed inset-0 z-50 bg-black/50 animate-fade-in"
-          onClick={() => setIsOpen(false)}
-        >
-          {/* Bottom sheet */}
-          <div 
-            className="absolute bottom-0 left-0 right-0 bg-slate-900 rounded-t-2xl shadow-xl border-t border-slate-700 animate-slide-up"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                <MapPin size={14} className="text-violet-400" />
-                {cityName} Nightlife
-              </h3>
-              <button
-                onClick={() => setIsOpen(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 text-slate-400 hover:text-white transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Content */}
-            <div className="p-4 space-y-4">
-              {/* Stats */}
-              <div>
-                <p className="text-xs text-slate-400">
-                  {activeVenueCount} aktive steder • {totalCheckins} check-ins (siste 3 timer)
-                </p>
-                {hasFavoriteCity && (
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    📍 Favorittby aktiv
-                  </p>
-                )}
-              </div>
-
-              {/* Current mode */}
-              <div className="pt-3 border-t border-slate-800">
-                <span className="text-[10px] text-slate-500 uppercase tracking-wide">Modus</span>
-                <p className="text-sm text-slate-300 mt-1">
-                  {heatmapMode === 'activity' && '📊 Aktivitetsnivå'}
-                  {heatmapMode === 'single' && '💘 Single-tetthet'}
-                  {heatmapMode === 'ons' && '🔥 ONS-åpenhet'}
-                  {heatmapMode === 'ons_boost' && '🚀 ONS Boost'}
-                </p>
-              </div>
-
-              {/* Notifications status */}
-              <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] text-slate-500 uppercase tracking-wide">Varsler</span>
-                  <p className="text-sm text-slate-300 mt-1">
-                    {!isNotificationsEnabled 
-                      ? '❌ Slå på i profil'
-                      : isNotificationsActive 
-                      ? '✅ Aktive' 
-                      : '⏸️ Av'}
-                  </p>
-                </div>
-                {isNotificationsEnabled && (
-                  <button
-                    onClick={onNotificationsToggle}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                      isNotificationsActive
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50'
-                        : 'bg-slate-700 text-slate-400 border border-slate-600'
-                    }`}
-                  >
-                    {isNotificationsActive ? 'Slå av' : 'Slå på'}
-                  </button>
-                )}
-              </div>
-
-              {/* Legend */}
-              <div className="pt-3 border-t border-slate-800">
-                <span className="text-[10px] text-slate-500 uppercase tracking-wide mb-2 block">Forklaring</span>
-                <div className="flex items-center gap-3">
-                  <div className="w-20 h-2.5 rounded-full" style={{
-                    background: heatmapMode === 'single'
-                      ? 'linear-gradient(to right, rgba(103, 58, 183, 0.3), rgba(236, 72, 153, 0.6), rgba(244, 63, 94, 0.9))'
-                      : heatmapMode === 'ons'
-                      ? 'linear-gradient(to right, rgba(103, 58, 183, 0.3), rgba(249, 115, 22, 0.6), rgba(239, 68, 68, 0.9))'
-                      : heatmapMode === 'ons_boost'
-                      ? 'linear-gradient(to right, rgba(249, 115, 22, 0.3), rgba(239, 68, 68, 0.6), rgba(220, 38, 38, 1))'
-                      : 'linear-gradient(to right, rgba(103, 58, 183, 0.7), rgba(33, 150, 243, 0.8), rgba(76, 175, 80, 0.9), rgba(255, 193, 7, 0.9), rgba(255, 87, 34, 1), rgba(244, 67, 54, 1))'
-                  }} />
-                  <span className="text-xs text-slate-400">
-                    {heatmapMode === 'activity' ? 'Stille → Hot' : 'Lite → Mye'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Safe area padding for iOS */}
-            <div className="h-8" />
-          </div>
-        </div>
-      )}
-    </>
   );
 }
