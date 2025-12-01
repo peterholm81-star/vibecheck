@@ -84,11 +84,11 @@
 
 /* ============================================
    MAPBOX CONTROL CUSTOMIZATION
-   Hide the Mapbox info/feedback button but keep the logo
+   Keep only the Mapbox logo, hide all other controls in bottom-left
    ============================================ */
 
-/* Hide the Mapbox compact attribution info button (the "i" circle) */
-.mapboxgl-ctrl-attrib-button {
+/* Hide the compact attribution control entirely (the white circle button) */
+.mapboxgl-ctrl-attrib {
   display: none !important;
 }
 

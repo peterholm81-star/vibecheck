@@ -325,7 +325,7 @@ export function InfoButton({
       {/* Info button - bottom left, above Mapbox logo */}
       <button
         onClick={() => setIsOpen(true)}
-        className="absolute bottom-7 left-2 z-10 w-9 h-9 bg-slate-900/90 backdrop-blur-sm rounded-full shadow-lg flex items-center justify-center text-violet-400 hover:text-white hover:bg-slate-800 transition-all"
+        className="absolute bottom-12 left-3 z-10 w-9 h-9 bg-slate-900/90 backdrop-blur-sm rounded-full shadow-lg flex items-center justify-center text-violet-400 hover:text-white hover:bg-slate-800 transition-all"
         title="Vis info"
       >
         <Info size={16} />
