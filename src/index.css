@@ -75,10 +75,9 @@
     min-width: auto;
   }
 
-  /* Hide Mapbox zoom controls on mobile - use pinch zoom instead */
-  .mapboxgl-ctrl-zoom-in,
-  .mapboxgl-ctrl-zoom-out,
-  .mapboxgl-ctrl-group {
+  /* Hide ALL Mapbox controls on mobile except attribution in bottom-left */
+  .mapboxgl-ctrl-top-right,
+  .mapboxgl-ctrl-bottom-right {
     display: none !important;
   }
 }

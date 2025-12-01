@@ -271,13 +271,13 @@ export function MapView({
       attributionControl: false,
     });
 
-    // Add minimal attribution
+    // Add minimal attribution (bottom-left to keep bottom-right clean)
     map.current.addControl(
       new mapboxgl.AttributionControl({ compact: true }),
-      'bottom-right'
+      'bottom-left'
     );
 
-    // Add navigation controls
+    // Add navigation controls (hidden on mobile via CSS)
     map.current.addControl(
       new mapboxgl.NavigationControl({ showCompass: false }),
       'top-right'
