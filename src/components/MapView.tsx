@@ -29,6 +29,7 @@ import {
   DesktopLiveAlertsPanel,
   OnsIndicator,
   DesktopLegend,
+  InfoButton,
 } from './map/MapOverlays';
 
 // Set Mapbox access token
@@ -517,6 +518,15 @@ export function MapView({
 
           {/* ONS mode indicator (small pill, bottom right) */}
           <OnsIndicator heatmapMode={heatmapMode} />
+
+          {/* Info button (bottom left, above Mapbox logo) */}
+          <InfoButton
+            cityName={effectiveCityName}
+            activeVenueCount={activeVenueCount}
+            totalCheckins={totalRecentCheckins || checkIns.length}
+            heatmapMode={heatmapMode}
+            hasFavoriteCity={localPrefs.favoriteCity !== 'auto'}
+          />
         </>
       ) : (
         <>
@@ -543,6 +553,15 @@ export function MapView({
 
           {/* Legend (bottom left) */}
           <DesktopLegend heatmapMode={heatmapMode} />
+
+          {/* Info button (bottom left, above legend) */}
+          <InfoButton
+            cityName={effectiveCityName}
+            activeVenueCount={activeVenueCount}
+            totalCheckins={totalRecentCheckins || checkIns.length}
+            heatmapMode={heatmapMode}
+            hasFavoriteCity={localPrefs.favoriteCity !== 'auto'}
+          />
         </>
       )}
 

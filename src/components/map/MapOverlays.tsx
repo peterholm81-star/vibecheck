@@ -1,4 +1,5 @@
-import { MapPin, Bell, BellOff, RefreshCw } from 'lucide-react';
+import { useState } from 'react';
+import { MapPin, Bell, BellOff, RefreshCw, Info, X } from 'lucide-react';
 import type { HeatmapMode } from '../../types';
 
 // ============================================
@@ -293,5 +294,121 @@ export function DesktopLegend({ heatmapMode }: DesktopLegendProps) {
         </span>
       </div>
     </div>
+  );
+}
+
+// ============================================
+// 7. INFO BUTTON
+// A floating button in bottom-left that opens the info panel
+// Positioned above the Mapbox logo
+// ============================================
+
+interface InfoButtonProps {
+  cityName: string;
+  activeVenueCount: number;
+  totalCheckins: number;
+  heatmapMode: HeatmapMode;
+  hasFavoriteCity: boolean;
+}
+
+export function InfoButton({
+  cityName,
+  activeVenueCount,
+  totalCheckins,
+  heatmapMode,
+  hasFavoriteCity,
+}: InfoButtonProps) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <>
+      {/* Info button - bottom left, above Mapbox logo */}
+      <button
+        onClick={() => setIsOpen(true)}
+        className="absolute bottom-7 left-2 z-10 w-9 h-9 bg-slate-900/90 backdrop-blur-sm rounded-full shadow-lg flex items-center justify-center text-violet-400 hover:text-white hover:bg-slate-800 transition-all"
+        title="Vis info"
+      >
+        <Info size={16} />
+      </button>
+
+      {/* Info panel overlay */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/50 animate-fade-in"
+          onClick={() => setIsOpen(false)}
+        >
+          {/* Bottom sheet */}
+          <div 
+            className="absolute bottom-0 left-0 right-0 bg-slate-900 rounded-t-2xl shadow-xl border-t border-slate-700 animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                <MapPin size={14} className="text-violet-400" />
+                {cityName} Nightlife
+              </h3>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 text-slate-400 hover:text-white transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-4 space-y-4">
+              {/* Stats */}
+              <div>
+                <p className="text-sm text-slate-300">
+                  {activeVenueCount} aktive steder • {totalCheckins} check-ins
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Siste 3 timer
+                </p>
+                {hasFavoriteCity && (
+                  <p className="text-xs text-violet-400 mt-2">
+                    📍 Favorittby aktiv
+                  </p>
+                )}
+              </div>
+
+              {/* Current mode */}
+              <div className="pt-3 border-t border-slate-800">
+                <span className="text-[10px] text-slate-500 uppercase tracking-wide">Kartmodus</span>
+                <p className="text-sm text-slate-300 mt-1">
+                  {heatmapMode === 'activity' && '📊 Aktivitetsnivå'}
+                  {heatmapMode === 'single' && '💘 Single-tetthet'}
+                  {heatmapMode === 'ons' && '🔥 ONS-åpenhet'}
+                  {heatmapMode === 'ons_boost' && '🚀 ONS Boost'}
+                </p>
+              </div>
+
+              {/* Legend */}
+              <div className="pt-3 border-t border-slate-800">
+                <span className="text-[10px] text-slate-500 uppercase tracking-wide mb-2 block">Forklaring</span>
+                <div className="flex items-center gap-3">
+                  <div className="w-24 h-3 rounded-full" style={{
+                    background: heatmapMode === 'single'
+                      ? 'linear-gradient(to right, rgba(103, 58, 183, 0.3), rgba(236, 72, 153, 0.6), rgba(244, 63, 94, 0.9))'
+                      : heatmapMode === 'ons'
+                      ? 'linear-gradient(to right, rgba(103, 58, 183, 0.3), rgba(249, 115, 22, 0.6), rgba(239, 68, 68, 0.9))'
+                      : heatmapMode === 'ons_boost'
+                      ? 'linear-gradient(to right, rgba(249, 115, 22, 0.3), rgba(239, 68, 68, 0.6), rgba(220, 38, 38, 1))'
+                      : 'linear-gradient(to right, rgba(103, 58, 183, 0.7), rgba(33, 150, 243, 0.8), rgba(76, 175, 80, 0.9), rgba(255, 193, 7, 0.9), rgba(255, 87, 34, 1), rgba(244, 67, 54, 1))'
+                  }} />
+                  <span className="text-xs text-slate-400">
+                    {heatmapMode === 'activity' ? 'Stille → Hot' : 'Lite → Mye'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Safe area padding for iOS */}
+            <div className="h-8" />
+          </div>
+        </div>
+      )}
+    </>
   );
 }
