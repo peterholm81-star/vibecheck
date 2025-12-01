@@ -29,8 +29,7 @@ import {
   DesktopLiveAlertsPanel,
   OnsIndicator,
   DesktopLegend,
-  ZoomHint,
-  MobileInfoSheet,
+  MobileInfoButton,
 } from './map/MapOverlays';
 
 // Set Mapbox access token
@@ -509,24 +508,8 @@ export function MapView({
             isLoading={heatmapLoading}
           />
 
-          {/* Notification toggle button (top right) */}
-          <LiveAlertsToggle
-            isActive={!!activeSessionId}
-            isLoading={isActivating || isDeactivating}
-            isDisabled={!profile?.allowNotifications}
-            onToggle={handleMobileNotificationToggle}
-          />
-
-          {/* ONS mode indicator (small pill, bottom left area) */}
-          <OnsIndicator heatmapMode={heatmapMode} />
-
-          {/* Zoom hint (very small, bottom right) */}
-          {currentZoom < MARKER_ZOOM_THRESHOLD && (
-            <ZoomHint isMobile={true} />
-          )}
-
-          {/* Info sheet (collapsible panel with all details) */}
-          <MobileInfoSheet
+          {/* Info button - positioned below the top bar */}
+          <MobileInfoButton
             cityName={effectiveCityName}
             activeVenueCount={activeVenueCount}
             totalCheckins={totalRecentCheckins || checkIns.length}
@@ -536,6 +519,17 @@ export function MapView({
             onNotificationsToggle={handleMobileNotificationToggle}
             hasFavoriteCity={localPrefs.favoriteCity !== 'auto'}
           />
+
+          {/* Notification toggle button (top right) */}
+          <LiveAlertsToggle
+            isActive={!!activeSessionId}
+            isLoading={isActivating || isDeactivating}
+            isDisabled={!profile?.allowNotifications}
+            onToggle={handleMobileNotificationToggle}
+          />
+
+          {/* ONS mode indicator (small pill, bottom right) */}
+          <OnsIndicator heatmapMode={heatmapMode} />
         </>
       ) : (
         <>
@@ -562,11 +556,6 @@ export function MapView({
 
           {/* Legend (bottom left) */}
           <DesktopLegend heatmapMode={heatmapMode} />
-
-          {/* Zoom hint (bottom right) */}
-          {currentZoom < MARKER_ZOOM_THRESHOLD && (
-            <ZoomHint isMobile={false} />
-          )}
         </>
       )}
 

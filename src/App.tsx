@@ -11,7 +11,6 @@ import { VenueDetail } from './components/VenueDetail';
 import { CheckInForm } from './components/CheckInForm';
 import { ProfileSettings } from './components/ProfileSettings';
 import { MobileFilters } from './components/MobileFilters';
-import { MobileTimeRangePicker } from './components/MobileTimeRangePicker';
 import { ToastContainer } from './components/Toast';
 import { useProfile, type AgeBand } from './hooks/useProfile';
 import { useToast } from './hooks/useToast';
@@ -101,7 +100,8 @@ function MainApp({ userId }: MainAppProps) {
     error: null,
   });
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
-  const [timeWindowMinutes, setTimeWindowMinutes] = useState<TimeWindow>(60);
+  // Fixed time window - no longer user-configurable
+  const timeWindowMinutes: TimeWindow = 180;
   const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>('activity');
   const [activeAgeBands, setActiveAgeBands] = useState<AgeBand[]>([]);
   const [activeIntents, setActiveIntents] = useState<Intent[]>([]);
@@ -590,47 +590,6 @@ function MainApp({ userId }: MainAppProps) {
         </div>
       </nav>
 
-      {/* Time Window Controls - Desktop only (hidden on mobile) */}
-      {(activeTab === 'map' || activeTab === 'venues') && (
-        <div className="hidden sm:block bg-gradient-to-r from-slate-800 to-slate-800/80 border-b border-slate-700 px-4 py-3">
-          <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-3">
-            <span className="text-sm text-slate-300 font-medium">🕐 Vis check-ins fra:</span>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setTimeWindowMinutes(60)}
-                className={`min-h-[40px] px-4 py-2 rounded-full text-sm font-semibold transition-all active:scale-95 ${
-                  timeWindowMinutes === 60
-                    ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/30'
-                    : 'bg-slate-700 text-slate-300 border border-slate-600 hover:bg-slate-600 hover:text-white'
-                }`}
-              >
-                60 min
-              </button>
-              <button
-                onClick={() => setTimeWindowMinutes(120)}
-                className={`min-h-[40px] px-4 py-2 rounded-full text-sm font-semibold transition-all active:scale-95 ${
-                  timeWindowMinutes === 120
-                    ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/30'
-                    : 'bg-slate-700 text-slate-300 border border-slate-600 hover:bg-slate-600 hover:text-white'
-                }`}
-              >
-                120 min
-              </button>
-              <button
-                onClick={() => setTimeWindowMinutes(180)}
-                className={`min-h-[40px] px-4 py-2 rounded-full text-sm font-semibold transition-all active:scale-95 ${
-                  timeWindowMinutes === 180
-                    ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/30'
-                    : 'bg-slate-700 text-slate-300 border border-slate-600 hover:bg-slate-600 hover:text-white'
-                }`}
-              >
-                180 min
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Mobile Filters - Compact filter bar for small screens */}
       {(activeTab === 'map' || activeTab === 'venues') && (
         <div className="sm:hidden">
@@ -647,13 +606,6 @@ function MainApp({ userId }: MainAppProps) {
             setSinglesOnly={setSinglesOnly}
             filteredCount={filteredCheckIns.length}
           />
-          {/* Time range picker chip - below filters */}
-          <div className="px-3 pb-2.5 bg-slate-800/80 border-b border-slate-700">
-            <MobileTimeRangePicker
-              timeWindowMinutes={timeWindowMinutes}
-              setTimeWindowMinutes={setTimeWindowMinutes}
-            />
-          </div>
         </div>
       )}
 
