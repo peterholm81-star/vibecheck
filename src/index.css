@@ -17,3 +17,61 @@
 .animate-slide-up {
   animation: slide-up 0.3s ease-out forwards;
 }
+
+/* ============================================
+   MOBILE MAP OVERLAY ANIMATIONS
+   Used for the collapsible info sheet on mobile
+   ============================================ */
+
+/* Slide up animation for mobile info sheet */
+@keyframes mobile-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Apply to elements that should slide up on mobile */
+.animate-slide-up {
+  animation: mobile-slide-up 0.2s ease-out forwards;
+}
+
+/* Fade in animation for overlays */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.15s ease-out forwards;
+}
+
+/* ============================================
+   MOBILE-FRIENDLY TOUCH TARGETS
+   Ensure all interactive elements are easy to tap
+   ============================================ */
+
+/* Minimum touch target size for mobile */
+@media (max-width: 768px) {
+  /* Make sure buttons and interactive elements are at least 44px */
+  button,
+  [role="button"],
+  a {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Exception for small indicator pills that aren't primary actions */
+  .mobile-pill {
+    min-height: auto;
+    min-width: auto;
+  }
+}

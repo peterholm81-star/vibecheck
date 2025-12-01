@@ -878,6 +878,14 @@ function App() {
       return;
     }
 
+    // DEV: Allow bypassing auth with ?devbypass=true in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    if (import.meta.env.DEV && urlParams.get('devbypass') === 'true') {
+      setLoading(false);
+      setUser({ id: 'dev-user' } as SupabaseUser);
+      return;
+    }
+
     // Get current user
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user ?? null);

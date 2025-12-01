@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { MapPin, RefreshCw, Bell, BellOff } from 'lucide-react';
 import type { Venue, CheckIn, TimeWindow, HeatmapMode, Intent } from '../types';
 import type { AgeBand } from '../hooks/useProfile';
 import { generateHeatmapData } from '../mocks/venues';
@@ -9,6 +8,7 @@ import { useCityName } from '../hooks/useCityName';
 import { useProfile } from '../hooks/useProfile';
 import { useVenueHeatmap, getHeatmapColor, getHeatmapGlow, HEATMAP_MODE_COLORS, type HeatmapVenue, type HeatmapVenueMode } from '../hooks/useVenueHeatmap';
 import { useNotificationSession, type NotificationSessionFilters } from '../hooks/useNotificationSession';
+import { useIsMobile } from '../hooks/useIsMobile';
 import {
   MAPBOX_TOKEN,
   MAP_STYLE,
@@ -20,6 +20,18 @@ import {
   HEATMAP_INTENSITY,
   HEATMAP_OPACITY,
 } from '../config/map';
+
+// Import mobile-friendly overlay components
+import {
+  MobileTopBar,
+  DesktopCityInfo,
+  LiveAlertsToggle,
+  DesktopLiveAlertsPanel,
+  OnsIndicator,
+  DesktopLegend,
+  ZoomHint,
+  MobileInfoSheet,
+} from './map/MapOverlays';
 
 // Set Mapbox access token
 mapboxgl.accessToken = MAPBOX_TOKEN;
@@ -168,6 +180,9 @@ export function MapView({
   const [currentZoom, setCurrentZoom] = useState(DEFAULT_ZOOM);
   const cityName = useCityName();
   const { profile, localPrefs } = useProfile();
+  
+  // Detect if we're on a mobile screen (< 768px width)
+  const isMobile = useIsMobile();
 
   // Heatmap 2.0: Use the new venue heatmap hook for real scores
   const { heatmapVenues, isLoading: heatmapLoading, refresh: refreshHeatmap } = useVenueHeatmap();
@@ -450,148 +465,109 @@ export function MapView({
     return heatmapVenues.reduce((sum, v) => sum + v.totalCheckins, 0);
   }, [heatmapVenues]);
 
+  // Helper function to handle notification toggle
+  const handleNotificationToggle = (enabled: boolean) => {
+    if (enabled) {
+      // Build filters snapshot from current state
+      const filters: NotificationSessionFilters = {
+        heatmapMode,
+        activeIntents,
+        activeAgeBands,
+        singlesOnly,
+        timeWindowMinutes,
+      };
+      startSession({ filters });
+    } else {
+      stopSession();
+    }
+  };
+
+  // Helper for mobile toggle (just toggles the current state)
+  const handleMobileNotificationToggle = () => {
+    handleNotificationToggle(!activeSessionId);
+  };
+
   return (
     <div className="flex-1 relative rounded-xl overflow-hidden">
       {/* Map container */}
       <div ref={mapContainer} className="absolute inset-0" />
 
-      {/* Info overlay - top left */}
-      <div className="absolute top-4 left-4 bg-slate-900/90 backdrop-blur-sm rounded-lg px-4 py-3 shadow-lg z-10">
-        <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-          <MapPin size={14} className="text-violet-400" />
-          {effectiveCityName} Nightlife
-          {heatmapLoading && <RefreshCw size={12} className="text-violet-400 animate-spin" />}
-        </h2>
-        <p className="text-xs text-slate-300 mt-0.5">
-          {activeVenueCount} active venue{activeVenueCount !== 1 ? 's' : ''} • {totalRecentCheckins || checkIns.length} check-in{(totalRecentCheckins || checkIns.length) !== 1 ? 's' : ''} (90 min)
-        </p>
-        
-        {/* Favorite city indicator */}
-        {localPrefs.favoriteCity !== 'auto' && (
-          <div className="mt-2 pt-2 border-t border-slate-700">
-            <span className="text-[11px] text-slate-400">
-              Favorittby aktiv (endre i Profil)
-            </span>
-          </div>
-        )}
-      </div>
+      {/* ============================================
+          RESPONSIVE MAP OVERLAYS
+          Shows different UI on mobile vs desktop
+          ============================================ */}
 
-      {/* Live Notifications Panel - top right */}
-      <div className="absolute top-4 right-14 bg-slate-900/90 backdrop-blur-sm rounded-lg px-4 py-3 shadow-lg z-10 max-w-[280px]">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            {activeSessionId ? (
-              <Bell size={14} className="text-amber-400" />
-            ) : (
-              <BellOff size={14} className="text-slate-500" />
-            )}
-            <span className="text-sm font-semibold text-white">
-              Live-varsler
-            </span>
-          </div>
+      {isMobile ? (
+        <>
+          {/* MOBILE LAYOUT */}
           
-          {/* Toggle */}
-          <label className="relative cursor-pointer">
-            <input
-              type="checkbox"
-              checked={!!activeSessionId}
-              onChange={(e) => {
-                if (e.target.checked) {
-                  // Build filters snapshot from current state
-                  const filters: NotificationSessionFilters = {
-                    heatmapMode,
-                    activeIntents,
-                    activeAgeBands,
-                    singlesOnly,
-                    timeWindowMinutes,
-                  };
-                  startSession({ filters });
-                } else {
-                  stopSession();
-                }
-              }}
-              disabled={isActivating || isDeactivating || !profile?.allowNotifications}
-              className="sr-only peer"
-            />
-            <div className={`w-9 h-5 rounded-full transition-colors ${
-              !profile?.allowNotifications 
-                ? 'bg-slate-700 cursor-not-allowed' 
-                : 'bg-slate-600 peer-checked:bg-amber-500 peer-focus:ring-2 peer-focus:ring-amber-500/50'
-            }`}></div>
-            <div className={`absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-              activeSessionId ? 'translate-x-4' : ''
-            } ${!profile?.allowNotifications ? 'opacity-50' : ''}`}></div>
-          </label>
-        </div>
-        
-        {/* Description / Status */}
-        <div className="mt-2">
-          {!profile?.allowNotifications ? (
-            <p className="text-[11px] text-amber-400">
-              Slå på varsler i "Min profil" for å bruke denne funksjonen.
-            </p>
-          ) : activeSessionId ? (
-            <p className="text-[11px] text-emerald-400">
-              ✅ Aktiv! Vi varsler deg når steder blir hot.
-            </p>
-          ) : (
-            <p className="text-[11px] text-slate-400">
-              Vi følger filtrene dine og kan varsle deg når steder matcher.
-            </p>
-          )}
-          
-          {/* Loading state */}
-          {(isActivating || isDeactivating) && (
-            <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
-              <RefreshCw size={10} className="animate-spin" />
-              {isActivating ? 'Starter...' : 'Stopper...'}
-            </p>
-          )}
-          
-          {/* Error state */}
-          {notificationError && (
-            <p className="text-[11px] text-red-400 mt-1">
-              {notificationError}
-            </p>
-          )}
-        </div>
-      </div>
+          {/* Top bar with city name and stats */}
+          <MobileTopBar
+            cityName={effectiveCityName}
+            activeVenueCount={activeVenueCount}
+            totalCheckins={totalRecentCheckins || checkIns.length}
+            isLoading={heatmapLoading}
+          />
 
-      {/* Legend - bottom left */}
-      <div className="absolute bottom-8 left-4 bg-slate-900/80 backdrop-blur-sm rounded-lg px-4 py-3 shadow-lg z-10">
-        <div className="text-xs font-medium text-slate-300 mb-2">
-          {heatmapMode === 'activity' && 'Aktivitetsnivå'}
-          {heatmapMode === 'single' && '💘 Single-tetthet'}
-          {heatmapMode === 'ons' && '🔥 ONS-åpenhet'}
-          {heatmapMode === 'ons_boost' && '🚀 ONS Boost Score'}
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-12 h-2 rounded-full" style={{
-            background: heatmapMode === 'single'
-              ? 'linear-gradient(to right, rgba(103, 58, 183, 0.3), rgba(236, 72, 153, 0.6), rgba(244, 63, 94, 0.9))'
-              : heatmapMode === 'ons'
-              ? 'linear-gradient(to right, rgba(103, 58, 183, 0.3), rgba(249, 115, 22, 0.6), rgba(239, 68, 68, 0.9))'
-              : heatmapMode === 'ons_boost'
-              ? 'linear-gradient(to right, rgba(249, 115, 22, 0.3), rgba(239, 68, 68, 0.6), rgba(220, 38, 38, 1))'
-              : 'linear-gradient(to right, rgba(103, 58, 183, 0.7), rgba(33, 150, 243, 0.8), rgba(76, 175, 80, 0.9), rgba(255, 193, 7, 0.9), rgba(255, 87, 34, 1), rgba(244, 67, 54, 1))'
-          }} />
-        </div>
-        <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-          <span>{heatmapMode === 'activity' ? 'Stille' : 'Lite'}</span>
-          <span>
-            {heatmapMode === 'activity' && '🔥 Hot'}
-            {heatmapMode === 'single' && '💘 Mye'}
-            {heatmapMode === 'ons' && '🔥 Mye'}
-            {heatmapMode === 'ons_boost' && '🚀 Boost'}
-          </span>
-        </div>
-      </div>
+          {/* Notification toggle button (top right) */}
+          <LiveAlertsToggle
+            isActive={!!activeSessionId}
+            isLoading={isActivating || isDeactivating}
+            isDisabled={!profile?.allowNotifications}
+            onToggle={handleMobileNotificationToggle}
+          />
 
-      {/* Zoom hint */}
-      {currentZoom < MARKER_ZOOM_THRESHOLD && (
-        <div className="absolute bottom-8 right-4 bg-slate-900/80 backdrop-blur-sm rounded-lg px-3 py-2 shadow-lg z-10">
-          <p className="text-xs text-slate-300">Zoom in to see venues</p>
-        </div>
+          {/* ONS mode indicator (small pill, bottom left area) */}
+          <OnsIndicator heatmapMode={heatmapMode} />
+
+          {/* Zoom hint (very small, bottom right) */}
+          {currentZoom < MARKER_ZOOM_THRESHOLD && (
+            <ZoomHint isMobile={true} />
+          )}
+
+          {/* Info sheet (collapsible panel with all details) */}
+          <MobileInfoSheet
+            cityName={effectiveCityName}
+            activeVenueCount={activeVenueCount}
+            totalCheckins={totalRecentCheckins || checkIns.length}
+            heatmapMode={heatmapMode}
+            isNotificationsActive={!!activeSessionId}
+            isNotificationsEnabled={!!profile?.allowNotifications}
+            onNotificationsToggle={handleMobileNotificationToggle}
+            hasFavoriteCity={localPrefs.favoriteCity !== 'auto'}
+          />
+        </>
+      ) : (
+        <>
+          {/* DESKTOP LAYOUT - Original full-featured panels */}
+          
+          {/* City info box (top left) */}
+          <DesktopCityInfo
+            cityName={effectiveCityName}
+            activeVenueCount={activeVenueCount}
+            totalCheckins={totalRecentCheckins || checkIns.length}
+            isLoading={heatmapLoading}
+            hasFavoriteCity={localPrefs.favoriteCity !== 'auto'}
+          />
+
+          {/* Live notifications panel (top right) */}
+          <DesktopLiveAlertsPanel
+            isActive={!!activeSessionId}
+            isActivating={isActivating}
+            isDeactivating={isDeactivating}
+            isNotificationsEnabled={!!profile?.allowNotifications}
+            error={notificationError}
+            onToggle={handleNotificationToggle}
+          />
+
+          {/* Legend (bottom left) */}
+          <DesktopLegend heatmapMode={heatmapMode} />
+
+          {/* Zoom hint (bottom right) */}
+          {currentZoom < MARKER_ZOOM_THRESHOLD && (
+            <ZoomHint isMobile={false} />
+          )}
+        </>
       )}
 
       {/* Custom marker styles */}
