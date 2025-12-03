@@ -11,6 +11,7 @@ import { VenueDetail } from './components/VenueDetail';
 import { CheckInForm } from './components/CheckInForm';
 import { ProfileSettings } from './components/ProfileSettings';
 import { MobileFilters } from './components/MobileFilters';
+import { Onboarding } from './components/Onboarding';
 import { ToastContainer } from './components/Toast';
 import { useProfile, type AgeBand } from './hooks/useProfile';
 import { useToast } from './hooks/useToast';
@@ -826,12 +827,36 @@ function MainApp({ userId }: MainAppProps) {
 }
 
 // ============================================
-// APP COMPONENT (auth wrapper)
+// APP COMPONENT (auth wrapper + onboarding)
 // ============================================
+// Flyten er:
+// 1. Sjekk om bruker har fullført onboarding (localStorage)
+// 2. Hvis ikke → vis Onboarding-skjerm
+// 3. Etter onboarding → sjekk auth
+// 4. Hvis ikke innlogget → vis LoginPage
+// 5. Hvis innlogget → vis MainApp
+// ============================================
+
+const ONBOARDING_KEY = 'vibecheck_onboarded';
 
 function App() {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Onboarding state - starter som null til vi har sjekket localStorage
+  const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null);
+
+  // Sjekk localStorage for onboarding-status ved oppstart
+  useEffect(() => {
+    const onboarded = localStorage.getItem(ONBOARDING_KEY) === 'true';
+    setHasOnboarded(onboarded);
+  }, []);
+
+  // Håndter fullført onboarding
+  const handleOnboardingComplete = () => {
+    localStorage.setItem(ONBOARDING_KEY, 'true');
+    setHasOnboarded(true);
+  };
 
   useEffect(() => {
     // Check if Supabase is configured
@@ -864,7 +889,24 @@ function App() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // Loading state
+  // Vent på at vi har sjekket onboarding-status
+  if (hasOnboarded === null) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw size={48} className="mx-auto text-violet-400 animate-spin mb-4" />
+          <p className="text-slate-300 font-medium">Laster...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Vis onboarding hvis bruker ikke har fullført den
+  if (!hasOnboarded) {
+    return <Onboarding onComplete={handleOnboardingComplete} />;
+  }
+
+  // Loading state (auth)
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
