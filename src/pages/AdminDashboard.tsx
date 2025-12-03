@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Users, UserPlus, Activity, Lock, RefreshCw, AlertCircle } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 // Admin PIN - can be overridden via environment variable
 const ADMIN_PIN = import.meta.env.VITE_ADMIN_PIN || '9281';
@@ -187,14 +187,20 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchStats = async () => {
+    console.log('[AdminDashboard] Fetching stats...');
+    console.log('[AdminDashboard] isSupabaseConfigured:', isSupabaseConfigured);
+    console.log('[AdminDashboard] Supabase client:', supabase ? 'exists' : 'null');
+
+    // If supabase client doesn't exist, give a helpful error but this should not happen
+    // if other parts of the app (like onboarding) work correctly
     if (!supabase) {
-      console.log('[AdminDashboard] Supabase not configured');
-      setError('Supabase ikke konfigurert');
+      const errorMsg = 'Supabase-klient er null. Sjekk VITE_SUPABASE_URL og VITE_SUPABASE_ANON_KEY i .env';
+      console.error('[AdminDashboard]', errorMsg);
+      console.error('[AdminDashboard] This is unexpected if onboarding works. Check browser console for more details.');
+      setError(errorMsg);
       setIsLoading(false);
       return;
     }
-
-    console.log('[AdminDashboard] Fetching stats...');
 
     try {
       // Calculate timestamps for filtering
@@ -208,16 +214,16 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
         tenMinutesAgo,
       });
 
-      // Fetch all three metrics in parallel
+      // Fetch all three metrics in parallel using the shared Supabase client
       const [totalResult, newResult, activeResult] = await Promise.all([
-        // Total users: count all rows in vibe_users
+        // Total users: SELECT COUNT(*) FROM vibe_users
         supabase.from('vibe_users').select('*', { count: 'exact', head: true }),
-        // New in last 24 hours: count where created_at >= 24 hours ago
+        // New in last 24 hours: SELECT COUNT(*) FROM vibe_users WHERE created_at >= now() - interval '24 hours'
         supabase
           .from('vibe_users')
           .select('*', { count: 'exact', head: true })
           .gte('created_at', twentyFourHoursAgo),
-        // Active in last 10 minutes: count where last_seen_at >= 10 minutes ago
+        // Active in last 10 minutes: SELECT COUNT(*) FROM vibe_users WHERE last_seen_at >= now() - interval '10 minutes'
         supabase
           .from('vibe_users')
           .select('*', { count: 'exact', head: true })
@@ -226,25 +232,26 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
 
       // Log raw results for debugging
       console.log('[AdminDashboard] Query results:', {
-        total: { count: totalResult.count, error: totalResult.error },
-        new24h: { count: newResult.count, error: newResult.error },
-        active10min: { count: activeResult.count, error: activeResult.error },
+        total: { count: totalResult.count, error: totalResult.error, status: totalResult.status },
+        new24h: { count: newResult.count, error: newResult.error, status: newResult.status },
+        active10min: { count: activeResult.count, error: activeResult.error, status: activeResult.status },
       });
 
-      // Check for errors
+      // Check for errors from Supabase
       if (totalResult.error) {
         console.error('[AdminDashboard] Total count error:', totalResult.error);
-        throw totalResult.error;
+        throw new Error(`Feil ved henting av totalt antall: ${totalResult.error.message}`);
       }
       if (newResult.error) {
         console.error('[AdminDashboard] New 24h count error:', newResult.error);
-        throw newResult.error;
+        throw new Error(`Feil ved henting av nye brukere: ${newResult.error.message}`);
       }
       if (activeResult.error) {
         console.error('[AdminDashboard] Active 10min count error:', activeResult.error);
-        throw activeResult.error;
+        throw new Error(`Feil ved henting av aktive brukere: ${activeResult.error.message}`);
       }
 
+      // Build stats object - use 0 as fallback if count is null
       const stats = {
         totalUsers: totalResult.count ?? 0,
         newLast24h: newResult.count ?? 0,
@@ -256,7 +263,7 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
       setStats(stats);
       setError(null);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Kunne ikke hente data';
+      const errorMessage = err instanceof Error ? err.message : String(err);
       console.error('[AdminDashboard] Failed to fetch admin stats:', err);
       setError(errorMessage);
     } finally {
@@ -266,7 +273,9 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
   };
 
   useEffect(() => {
-    console.log('[AdminDashboard] Component mounted, fetching stats...');
+    console.log('[AdminDashboard] DashboardContent mounted');
+    console.log('[AdminDashboard] Supabase configured:', isSupabaseConfigured);
+    console.log('[AdminDashboard] Supabase client exists:', !!supabase);
     fetchStats();
     
     // Refresh every 30 seconds
