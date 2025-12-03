@@ -1,13 +1,13 @@
 {
-  "name": "vite-react-typescript-starter",
+  "name": "vibecheck",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
     "preview": "vite preview",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "update:venues:google": "tsx scripts/updateVenuesFromGooglePlaces.ts"
   },
