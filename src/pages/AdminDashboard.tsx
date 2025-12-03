@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Users, UserPlus, Activity, Lock, RefreshCw, AlertCircle } from 'lucide-react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 
 // Admin PIN - can be overridden via environment variable
 const ADMIN_PIN = import.meta.env.VITE_ADMIN_PIN || '9281';
@@ -187,20 +187,7 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchStats = async () => {
-    console.log('[AdminDashboard] Fetching stats...');
-    console.log('[AdminDashboard] isSupabaseConfigured:', isSupabaseConfigured);
-    console.log('[AdminDashboard] Supabase client:', supabase ? 'exists' : 'null');
-
-    // If supabase client doesn't exist, give a helpful error but this should not happen
-    // if other parts of the app (like onboarding) work correctly
-    if (!supabase) {
-      const errorMsg = 'Supabase-klient er null. Sjekk VITE_SUPABASE_URL og VITE_SUPABASE_ANON_KEY i .env';
-      console.error('[AdminDashboard]', errorMsg);
-      console.error('[AdminDashboard] This is unexpected if onboarding works. Check browser console for more details.');
-      setError(errorMsg);
-      setIsLoading(false);
-      return;
-    }
+    console.log('[AdminDashboard] Fetching stats from vibe_users...');
 
     try {
       // Calculate timestamps for filtering
@@ -208,64 +195,50 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
       const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
       const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
 
-      console.log('[AdminDashboard] Time filters:', {
-        now: now.toISOString(),
-        twentyFourHoursAgo,
-        tenMinutesAgo,
-      });
+      console.log('[AdminDashboard] Time filters:', { twentyFourHoursAgo, tenMinutesAgo });
 
-      // Fetch all three metrics in parallel using the shared Supabase client
+      // Use the shared Supabase client (same as onboarding uses)
+      // If supabase is null, this will throw and we catch it below
+      if (!supabase) {
+        throw new Error('Supabase client not initialized');
+      }
+
+      // Fetch all three metrics in parallel
       const [totalResult, newResult, activeResult] = await Promise.all([
         // Total users: SELECT COUNT(*) FROM vibe_users
         supabase.from('vibe_users').select('*', { count: 'exact', head: true }),
-        // New in last 24 hours: SELECT COUNT(*) FROM vibe_users WHERE created_at >= now() - interval '24 hours'
-        supabase
-          .from('vibe_users')
-          .select('*', { count: 'exact', head: true })
-          .gte('created_at', twentyFourHoursAgo),
-        // Active in last 10 minutes: SELECT COUNT(*) FROM vibe_users WHERE last_seen_at >= now() - interval '10 minutes'
-        supabase
-          .from('vibe_users')
-          .select('*', { count: 'exact', head: true })
-          .gte('last_seen_at', tenMinutesAgo),
+        // New in last 24 hours
+        supabase.from('vibe_users').select('*', { count: 'exact', head: true }).gte('created_at', twentyFourHoursAgo),
+        // Active in last 10 minutes
+        supabase.from('vibe_users').select('*', { count: 'exact', head: true }).gte('last_seen_at', tenMinutesAgo),
       ]);
 
-      // Log raw results for debugging
-      console.log('[AdminDashboard] Query results:', {
-        total: { count: totalResult.count, error: totalResult.error, status: totalResult.status },
-        new24h: { count: newResult.count, error: newResult.error, status: newResult.status },
-        active10min: { count: activeResult.count, error: activeResult.error, status: activeResult.status },
+      // Log raw results
+      console.log('[AdminDashboard] Results:', {
+        total: { count: totalResult.count, error: totalResult.error?.message },
+        new24h: { count: newResult.count, error: newResult.error?.message },
+        active10min: { count: activeResult.count, error: activeResult.error?.message },
       });
 
-      // Check for errors from Supabase
-      if (totalResult.error) {
-        console.error('[AdminDashboard] Total count error:', totalResult.error);
-        throw new Error(`Feil ved henting av totalt antall: ${totalResult.error.message}`);
-      }
-      if (newResult.error) {
-        console.error('[AdminDashboard] New 24h count error:', newResult.error);
-        throw new Error(`Feil ved henting av nye brukere: ${newResult.error.message}`);
-      }
-      if (activeResult.error) {
-        console.error('[AdminDashboard] Active 10min count error:', activeResult.error);
-        throw new Error(`Feil ved henting av aktive brukere: ${activeResult.error.message}`);
-      }
+      // Check for Supabase errors
+      if (totalResult.error) throw new Error(totalResult.error.message);
+      if (newResult.error) throw new Error(newResult.error.message);
+      if (activeResult.error) throw new Error(activeResult.error.message);
 
-      // Build stats object - use 0 as fallback if count is null
-      const stats = {
+      // Set stats
+      const newStats = {
         totalUsers: totalResult.count ?? 0,
         newLast24h: newResult.count ?? 0,
         activeLast10min: activeResult.count ?? 0,
       };
 
-      console.log('[AdminDashboard] Final stats:', stats);
-
-      setStats(stats);
+      console.log('[AdminDashboard] Stats:', newStats);
+      setStats(newStats);
       setError(null);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      console.error('[AdminDashboard] Failed to fetch admin stats:', err);
-      setError(errorMessage);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[AdminDashboard] Error:', msg);
+      setError(msg);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -273,16 +246,11 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
   };
 
   useEffect(() => {
-    console.log('[AdminDashboard] DashboardContent mounted');
-    console.log('[AdminDashboard] Supabase configured:', isSupabaseConfigured);
-    console.log('[AdminDashboard] Supabase client exists:', !!supabase);
+    console.log('[AdminDashboard] Mounted, fetching stats...');
     fetchStats();
     
     // Refresh every 30 seconds
-    const interval = setInterval(() => {
-      console.log('[AdminDashboard] Auto-refresh triggered');
-      fetchStats();
-    }, 30000);
+    const interval = setInterval(fetchStats, 30000);
     return () => clearInterval(interval);
   }, []);
 
