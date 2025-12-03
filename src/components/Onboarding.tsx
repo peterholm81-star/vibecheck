@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { MapPin, Sparkles, Shield, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { MapPin, Sparkles, Shield, ChevronLeft, ChevronRight, Check, Loader2 } from 'lucide-react';
+import { saveOnboardingToSupabase } from '../lib/vibeUsers';
 
 // ============================================
 // ONBOARDING WIZARD (6 steg)
@@ -64,13 +65,16 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const [mood, setMood] = useState<Mood>(null);
   const [ageRange, setAgeRange] = useState<AgeRange>(null);
   const [favoriteCityId, setFavoriteCityId] = useState<string>('trondheim');
+  const [isSaving, setIsSaving] = useState(false);
 
   // Navigasjon
   const goNext = () => setCurrentStep((s) => Math.min(s + 1, TOTAL_STEPS));
   const goBack = () => setCurrentStep((s) => Math.max(s - 1, 1));
 
   // Fullfør onboarding
-  const handleComplete = () => {
+  const handleComplete = async () => {
+    setIsSaving(true);
+    
     // Lagre preferanser i localStorage
     const preferences = {
       mode,
@@ -79,6 +83,16 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       favoriteCityId,
     };
     localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences));
+    
+    // Lagre til Supabase (fire-and-forget, men vent på resultat)
+    const result = await saveOnboardingToSupabase(preferences);
+    
+    if (!result.success) {
+      // Log error but don't block the user
+      console.error('Failed to save onboarding to Supabase:', result.error);
+    }
+    
+    setIsSaving(false);
     
     // Kall onComplete for å gå videre til appen
     onComplete();
@@ -107,16 +121,19 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     canGoNext,
     nextLabel = 'Neste',
     onNext,
+    isLoading = false,
   }: {
     canGoNext: boolean;
     nextLabel?: string;
     onNext?: () => void;
+    isLoading?: boolean;
   }) => (
     <div className="flex gap-3 mt-8">
       {currentStep > 1 && (
         <button
           onClick={goBack}
-          className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium py-3.5 px-6 rounded-xl transition-all"
+          disabled={isLoading}
+          className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium py-3.5 px-6 rounded-xl transition-all disabled:opacity-50"
         >
           <ChevronLeft size={18} />
           Tilbake
@@ -124,16 +141,25 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       )}
       <button
         onClick={onNext || goNext}
-        disabled={!canGoNext}
+        disabled={!canGoNext || isLoading}
         className={`flex-1 flex items-center justify-center gap-2 font-semibold py-3.5 px-6 rounded-xl transition-all ${
-          canGoNext
+          canGoNext && !isLoading
             ? 'bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white shadow-lg shadow-violet-500/30'
             : 'bg-slate-700 text-slate-500 cursor-not-allowed'
         }`}
       >
-        {nextLabel}
-        {nextLabel === 'Neste' && <ChevronRight size={18} />}
-        {nextLabel === 'Fullfør og start' && <Check size={18} />}
+        {isLoading ? (
+          <>
+            <Loader2 size={18} className="animate-spin" />
+            Lagrer...
+          </>
+        ) : (
+          <>
+            {nextLabel}
+            {nextLabel === 'Neste' && <ChevronRight size={18} />}
+            {nextLabel === 'Fullfør og start' && <Check size={18} />}
+          </>
+        )}
       </button>
     </div>
   );
@@ -455,6 +481,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
             canGoNext={true}
             nextLabel="Fullfør og start"
             onNext={handleComplete}
+            isLoading={isSaving}
           />
         </div>
       </div>

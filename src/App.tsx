@@ -4,6 +4,7 @@ import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import { LoginPage } from './pages/LoginPage';
 import { InsightsDashboard } from './pages/InsightsDashboard';
+import { AdminDashboard } from './pages/AdminDashboard';
 import { getVenues, getRecentCheckIns } from './api';
 import { MapView } from './components/MapView';
 import { VenueList } from './components/VenueList';
@@ -839,18 +840,43 @@ function MainApp({ userId }: MainAppProps) {
 
 const ONBOARDING_KEY = 'vibecheck_onboarded';
 
+/**
+ * Check if current URL is the admin route
+ */
+function isAdminRoute(): boolean {
+  return window.location.pathname === '/admin';
+}
+
 function App() {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   
   // Onboarding state - starter som null til vi har sjekket localStorage
   const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null);
+  
+  // Admin route state
+  const [showAdmin, setShowAdmin] = useState(isAdminRoute());
 
   // Sjekk localStorage for onboarding-status ved oppstart
   useEffect(() => {
     const onboarded = localStorage.getItem(ONBOARDING_KEY) === 'true';
     setHasOnboarded(onboarded);
   }, []);
+
+  // Handle browser back/forward for admin route
+  useEffect(() => {
+    const handlePopState = () => {
+      setShowAdmin(isAdminRoute());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Handler for leaving admin
+  const handleAdminBack = () => {
+    window.history.pushState({}, '', '/');
+    setShowAdmin(false);
+  };
 
   // Håndter fullført onboarding
   const handleOnboardingComplete = () => {
@@ -888,6 +914,11 @@ function App() {
 
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  // Show admin dashboard if on /admin route
+  if (showAdmin) {
+    return <AdminDashboard onBack={handleAdminBack} />;
+  }
 
   // Vent på at vi har sjekket onboarding-status
   if (hasOnboarded === null) {

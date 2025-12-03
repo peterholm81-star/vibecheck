@@ -9,6 +9,7 @@ import { useProfile } from '../hooks/useProfile';
 import { useVenueHeatmap, getHeatmapColor, getHeatmapGlow, HEATMAP_MODE_COLORS, type HeatmapVenue, type HeatmapVenueMode } from '../hooks/useVenueHeatmap';
 import { useNotificationSession, type NotificationSessionFilters } from '../hooks/useNotificationSession';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { updateLastSeen } from '../lib/vibeUsers';
 import {
   MAPBOX_TOKEN,
   MAP_STYLE,
@@ -185,6 +186,12 @@ export function MapView({
 
   // Heatmap 2.0: Use the new venue heatmap hook for real scores
   const { heatmapVenues, isLoading: heatmapLoading, refresh: refreshHeatmap } = useVenueHeatmap();
+
+  // Update last_seen_at in vibe_users when map opens
+  // This is a fire-and-forget operation
+  useEffect(() => {
+    updateLastSeen();
+  }, []);
 
   // Notification session ("Live-varsler for kvelden")
   const {
