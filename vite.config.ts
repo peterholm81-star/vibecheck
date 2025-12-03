@@ -42,7 +42,7 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB
       },
       devOptions: {
-        enabled: true, // Enable PWA in dev for testing
+        enabled: false, // Deaktivert: ingen service worker i dev-miljø
       },
     }),
   ],

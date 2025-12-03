@@ -21,3 +21,8 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# PWA dev-filer (skal aldri sjekkes inn i git)
+dev-dist
+sw.js
+workbox-*.js
