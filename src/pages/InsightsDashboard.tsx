@@ -368,7 +368,7 @@ export function InsightsDashboard({ onBack }: InsightsDashboardProps) {
                 <MapPin size={18} className="text-violet-400" />
               </div>
               <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider">Admin: Velg sted</p>
+                <p className="text-xs text-slate-500 uppercase tracking-wider">Velg sted</p>
                 <p className="text-sm text-slate-300 mt-0.5">Viser insights for valgt venue</p>
               </div>
             </div>
