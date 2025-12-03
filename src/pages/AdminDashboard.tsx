@@ -165,7 +165,7 @@ function StatsCard({
         </div>
       ) : (
         <p className={`text-4xl font-bold ${valueColorClasses[color]}`}>
-          {value !== null ? value.toLocaleString('no-NO') : '–'}
+          {value !== null ? value.toLocaleString('no-NO') : '0'}
         </p>
       )}
       
@@ -188,45 +188,77 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
 
   const fetchStats = async () => {
     if (!supabase) {
+      console.log('[AdminDashboard] Supabase not configured');
       setError('Supabase ikke konfigurert');
       setIsLoading(false);
       return;
     }
 
+    console.log('[AdminDashboard] Fetching stats...');
+
     try {
-      // Fetch all three metrics in parallel
+      // Calculate timestamps for filtering
       const now = new Date();
       const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
       const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
 
+      console.log('[AdminDashboard] Time filters:', {
+        now: now.toISOString(),
+        twentyFourHoursAgo,
+        tenMinutesAgo,
+      });
+
+      // Fetch all three metrics in parallel
       const [totalResult, newResult, activeResult] = await Promise.all([
-        // Total users
-        supabase.from('vibe_users').select('id', { count: 'exact', head: true }),
-        // New in last 24 hours
+        // Total users: count all rows in vibe_users
+        supabase.from('vibe_users').select('*', { count: 'exact', head: true }),
+        // New in last 24 hours: count where created_at >= 24 hours ago
         supabase
           .from('vibe_users')
-          .select('id', { count: 'exact', head: true })
+          .select('*', { count: 'exact', head: true })
           .gte('created_at', twentyFourHoursAgo),
-        // Active in last 10 minutes
+        // Active in last 10 minutes: count where last_seen_at >= 10 minutes ago
         supabase
           .from('vibe_users')
-          .select('id', { count: 'exact', head: true })
+          .select('*', { count: 'exact', head: true })
           .gte('last_seen_at', tenMinutesAgo),
       ]);
 
-      if (totalResult.error) throw totalResult.error;
-      if (newResult.error) throw newResult.error;
-      if (activeResult.error) throw activeResult.error;
+      // Log raw results for debugging
+      console.log('[AdminDashboard] Query results:', {
+        total: { count: totalResult.count, error: totalResult.error },
+        new24h: { count: newResult.count, error: newResult.error },
+        active10min: { count: activeResult.count, error: activeResult.error },
+      });
 
-      setStats({
+      // Check for errors
+      if (totalResult.error) {
+        console.error('[AdminDashboard] Total count error:', totalResult.error);
+        throw totalResult.error;
+      }
+      if (newResult.error) {
+        console.error('[AdminDashboard] New 24h count error:', newResult.error);
+        throw newResult.error;
+      }
+      if (activeResult.error) {
+        console.error('[AdminDashboard] Active 10min count error:', activeResult.error);
+        throw activeResult.error;
+      }
+
+      const stats = {
         totalUsers: totalResult.count ?? 0,
         newLast24h: newResult.count ?? 0,
         activeLast10min: activeResult.count ?? 0,
-      });
+      };
+
+      console.log('[AdminDashboard] Final stats:', stats);
+
+      setStats(stats);
       setError(null);
     } catch (err) {
-      console.error('Failed to fetch admin stats:', err);
-      setError(err instanceof Error ? err.message : 'Kunne ikke hente data');
+      const errorMessage = err instanceof Error ? err.message : 'Kunne ikke hente data';
+      console.error('[AdminDashboard] Failed to fetch admin stats:', err);
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -234,10 +266,14 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
   };
 
   useEffect(() => {
+    console.log('[AdminDashboard] Component mounted, fetching stats...');
     fetchStats();
     
     // Refresh every 30 seconds
-    const interval = setInterval(fetchStats, 30000);
+    const interval = setInterval(() => {
+      console.log('[AdminDashboard] Auto-refresh triggered');
+      fetchStats();
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
