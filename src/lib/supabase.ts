@@ -4,26 +4,36 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 // SUPABASE CLIENT CONFIGURATION
 // ============================================
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 // Check if Supabase is configured
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
-// Create client only if configured, otherwise null
-export const supabase: SupabaseClient | null = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+// Create client - in production this should always succeed
+// In development without .env, we create a dummy client that will fail gracefully
+let supabaseClient: SupabaseClient;
 
-// Log warning in development if not configured
-if (!isSupabaseConfigured && import.meta.env.DEV) {
+if (supabaseUrl && supabaseAnonKey) {
+  // Normal case: env vars are set, create real client
+  supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+} else {
+  // Fallback: create a client with placeholder values
+  // This will fail on actual queries, but prevents null reference errors
   console.warn(
-    '⚠️ Supabase is not configured. Using mock data.\n' +
-    'To enable Supabase, create a .env file with:\n' +
-    '  VITE_SUPABASE_URL=your_supabase_url\n' +
-    '  VITE_SUPABASE_ANON_KEY=your_supabase_anon_key'
+    '⚠️ Supabase environment variables not found.\n' +
+    'Expected: VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY\n' +
+    'Queries will fail until these are configured.'
+  );
+  // Create a dummy client - queries will fail but app won't crash
+  supabaseClient = createClient(
+    'https://placeholder.supabase.co',
+    'placeholder-key'
   );
 }
+
+// Export the client - never null
+export const supabase: SupabaseClient = supabaseClient;
 
 // ============================================
 // DATABASE TYPES (for Supabase)

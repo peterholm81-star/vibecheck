@@ -197,13 +197,7 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
 
       console.log('[AdminDashboard] Time filters:', { twentyFourHoursAgo, tenMinutesAgo });
 
-      // Use the shared Supabase client (same as onboarding uses)
-      // If supabase is null, this will throw and we catch it below
-      if (!supabase) {
-        throw new Error('Supabase client not initialized');
-      }
-
-      // Fetch all three metrics in parallel
+      // Fetch all three metrics in parallel using the shared Supabase client
       const [totalResult, newResult, activeResult] = await Promise.all([
         // Total users: SELECT COUNT(*) FROM vibe_users
         supabase.from('vibe_users').select('*', { count: 'exact', head: true }),
