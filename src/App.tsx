@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Map, List, PlusCircle, RefreshCw, AlertCircle, User, Heart, Activity, Users, Sparkles, Search } from 'lucide-react';
+import { Map, List, PlusCircle, RefreshCw, AlertCircle, User, Heart, Activity, Users, Sparkles, BarChart3, Search } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import { LoginPage } from './pages/LoginPage';
