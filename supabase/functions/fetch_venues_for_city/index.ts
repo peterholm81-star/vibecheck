@@ -1,398 +1,297 @@
-/**
- * Supabase Edge Function: fetch_venues_for_city
- * 
- * Henter venues fra OpenStreetMap (Overpass API) og lagrer dem i `venues`-tabellen.
- * Sletter først eksisterende OSM-venues for byen, deretter legger inn nye.
- * 
- * ============================================
- * HVORDAN KALLE FRA FRONTEND (React):
- * ============================================
- * 
- * const response = await fetch(
- *   `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch_venues_for_city`,
- *   {
- *     method: 'POST',
- *     headers: {
- *       'Content-Type': 'application/json',
- *       'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
- *     },
- *     body: JSON.stringify({
- *       cityId: 1,
- *       radiusKm: 5,                  // optional, default 5
- *       includeCafeRestaurant: false, // optional, default false
- *     }),
- *   }
- * );
- * 
- * const data = await response.json();
- * // data.city = { id, name, country_code, center_lat, center_lon }
- * // data.inserted = number of venues inserted
- * // data.venues_sample = first 5 inserted venues
- * 
- * ============================================
- * EXAMPLE REQUEST BODY (for Supabase Dashboard):
- * ============================================
- * {
- *   "cityId": 1,
- *   "radiusKm": 3,
- *   "includeCafeRestaurant": true
- * }
- * 
- */
+// Edge Function: fetch_venues_for_city
+// Henter venues fra OpenStreetMap / Overpass, lagrer dem i `venues`-tabellen
+// og returnerer et lite sammendrag.
+//
+// Forventer body (JSON):
+// {
+//   "cityId": 2,
+//   "radiusKm": 5,
+//   "includeCafeRestaurant": false,
+//   "limit": 50
+// }
 
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
-// ============================================
-// TYPES
-// ============================================
-
-interface RequestBody {
-  cityId: number;
-  radiusKm?: number;
-  includeCafeRestaurant?: boolean;
-}
-
-interface CityRow {
-  id: number;
-  name: string;
-  country_code: string;
-  center_lat: number;
-  center_lon: number;
-}
-
-interface OSMElement {
-  type: 'node' | 'way' | 'relation';
-  id: number;
-  lat?: number;
-  lon?: number;
-  center?: {
-    lat: number;
-    lon: number;
-  };
-  tags?: {
-    name?: string;
-    amenity?: string;
-    'addr:street'?: string;
-    'addr:housenumber'?: string;
-    [key: string]: string | undefined;
-  };
-}
-
-interface OverpassResponse {
-  elements: OSMElement[];
-}
-
-interface VenueInsert {
-  name: string;
-  address: string | null;
-  latitude: number;
-  longitude: number;
-  city: string;
-  city_id: number;
-  category: string;
-  is_nightlife: boolean;
-  is_default_in_list: boolean;
-  is_verified: boolean;
-  osm_id: number;
-  osm_source: string;
-  source: string;
-}
-
-// ============================================
-// CORS HEADERS
-// ============================================
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+// Rebruk samme CORS-headers som i get_venues_for_city
+const corsHeaders: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+// Bruk service-role hvis tilgjengelig, ellers anon key (tilpass til hvordan prosjektet ditt er satt opp)
+const SUPABASE_SERVICE_ROLE_KEY =
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  Deno.env.get("SUPABASE_ANON_KEY") ??
+  "";
 
-function isNightlifeCategory(amenity: string): boolean {
-  return ['bar', 'pub', 'nightclub'].includes(amenity);
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error("Missing SUPABASE_URL or SUPABASE_* key in environment");
 }
 
-function buildAddress(tags: OSMElement['tags']): string | null {
-  if (!tags) return null;
-  const street = tags['addr:street'] ?? '';
-  const housenumber = tags['addr:housenumber'] ?? '';
-  const address = `${street} ${housenumber}`.trim();
-  return address || null;
-}
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
+});
 
-function buildOverpassQuery(
-  lat: number,
-  lon: number,
-  radiusMeters: number,
-  includeCafeRestaurant: boolean
-): string {
-  const amenities = includeCafeRestaurant
-    ? 'bar|pub|nightclub|restaurant|cafe'
-    : 'bar|pub|nightclub';
+type CityRow = {
+  id: number;
+  name: string;
+  country_code: string | null;
+  center_lat: number;
+  center_lon: number;
+};
 
-  return `
-[out:json][timeout:60];
-(
-  node["amenity"~"${amenities}"](around:${radiusMeters},${lat},${lon});
-  way["amenity"~"${amenities}"](around:${radiusMeters},${lat},${lon});
-  relation["amenity"~"${amenities}"](around:${radiusMeters},${lat},${lon});
-);
-out center;
-`.trim();
-}
+type OverpassElement = {
+  id: number;
+  lat: number;
+  lon: number;
+  tags?: Record<string, string>;
+};
 
-// ============================================
-// MAIN HANDLER
-// ============================================
+const NIGHTLIFE_AMENITIES = ["bar", "pub", "nightclub"];
+const CAFE_RESTAURANT_AMENITIES = ["cafe", "restaurant"];
 
-serve(async (req: Request) => {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+serve(async (req: Request): Promise<Response> => {
+  // CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
   }
 
-  // Only allow POST
-  if (req.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ error: 'Method not allowed. Use POST.' }),
-      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  if (req.method !== "POST") {
+    return jsonResponse(
+      { error: "Method not allowed. Use POST." },
+      405,
     );
   }
 
   try {
-    // Parse request body
-    let body: RequestBody;
-    try {
-      body = await req.json();
-    } catch {
-      return new Response(
-        JSON.stringify({ error: 'Invalid JSON in request body' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Validate required fields
-    const { cityId } = body;
-
-    if (cityId === undefined || cityId === null || typeof cityId !== 'number') {
-      return new Response(
-        JSON.stringify({ error: 'Missing or invalid required field: cityId (must be a number)' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Set defaults
-    const radiusKm = body.radiusKm ?? 5;
-    const includeCafeRestaurant = body.includeCafeRestaurant ?? false;
-
-    // Create Supabase client with service role key
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-
-    if (!supabaseUrl || !supabaseServiceRoleKey) {
-      console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
-      return new Response(
-        JSON.stringify({ error: 'Server configuration error' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
-
-    // ============================================
-    // 1. Verify city exists
-    // ============================================
-    const { data: cityData, error: cityError } = await supabase
-      .from('cities')
-      .select('id, name, country_code, center_lat, center_lon')
-      .eq('id', cityId)
-      .single();
-
-    if (cityError || !cityData) {
-      console.error('City lookup error:', cityError);
-      return new Response(
-        JSON.stringify({ error: 'City not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const city = cityData as CityRow;
-
-    // ============================================
-    // 2. Build and execute Overpass query
-    // ============================================
-    const radiusMeters = radiusKm * 1000;
-    const overpassQuery = buildOverpassQuery(
-      city.center_lat,
-      city.center_lon,
-      radiusMeters,
-      includeCafeRestaurant
-    );
-
-    console.log('Overpass query:', overpassQuery);
-
-    let overpassData: OverpassResponse;
-    try {
-      const overpassResponse = await fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `data=${encodeURIComponent(overpassQuery)}`,
-      });
-
-      if (!overpassResponse.ok) {
-        const errorText = await overpassResponse.text();
-        console.error('Overpass API error:', overpassResponse.status, errorText);
-        return new Response(
-          JSON.stringify({ 
-            error: 'Overpass request failed', 
-            details: `Status ${overpassResponse.status}: ${errorText.substring(0, 200)}` 
-          }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      overpassData = await overpassResponse.json();
-    } catch (fetchError) {
-      console.error('Overpass fetch error:', fetchError);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Overpass request failed', 
-          details: fetchError instanceof Error ? fetchError.message : 'Unknown fetch error' 
-        }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`Overpass returned ${overpassData.elements?.length ?? 0} elements`);
-
-    // ============================================
-    // 3. Delete existing OSM venues for this city
-    // ============================================
-    const { error: deleteError } = await supabase
-      .from('venues')
-      .delete()
-      .eq('city_id', city.id)
-      .eq('osm_source', 'overpass');
-
-    if (deleteError) {
-      console.error('Delete error:', deleteError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to delete existing OSM venues', details: deleteError.message }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // ============================================
-    // 4. Map OSM elements to venue records
-    // ============================================
-    const venuesToInsert: VenueInsert[] = [];
-
-    for (const element of overpassData.elements || []) {
-      // Get coordinates
-      let lat: number | undefined;
-      let lon: number | undefined;
-
-      if (element.type === 'node') {
-        lat = element.lat;
-        lon = element.lon;
-      } else if (element.center) {
-        lat = element.center.lat;
-        lon = element.center.lon;
-      }
-
-      // Skip if no coordinates
-      if (lat === undefined || lon === undefined) {
-        console.log(`Skipping element ${element.id} (${element.type}): no coordinates`);
-        continue;
-      }
-
-      const tags = element.tags || {};
-      const amenity = tags.amenity || 'unknown';
-
-      // Build venue name
-      const name = tags.name || `${amenity.charAt(0).toUpperCase() + amenity.slice(1)} #${element.id}`;
-
-      const venue: VenueInsert = {
-        name,
-        address: buildAddress(tags),
-        latitude: lat,
-        longitude: lon,
-        city: city.name,
-        city_id: city.id,
-        category: amenity,
-        is_nightlife: isNightlifeCategory(amenity),
-        is_default_in_list: false,
-        is_verified: false,
-        osm_id: element.id,
-        osm_source: 'overpass',
-        source: 'overpass',
-      };
-
-      venuesToInsert.push(venue);
-    }
-
-    console.log(`Mapped ${venuesToInsert.length} venues to insert`);
-
-    // ============================================
-    // 5. Insert venues (if any)
-    // ============================================
-    let insertedVenues: VenueInsert[] = [];
-
-    if (venuesToInsert.length > 0) {
-      const { data: insertedData, error: insertError } = await supabase
-        .from('venues')
-        .insert(venuesToInsert)
-        .select();
-
-      if (insertError) {
-        console.error('Insert error:', insertError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to insert venues', details: insertError.message }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      insertedVenues = insertedData || [];
-    }
-
-    // ============================================
-    // 6. Build response
-    // ============================================
-    const response = {
-      city: {
-        id: city.id,
-        name: city.name,
-        country_code: city.country_code,
-        center_lat: city.center_lat,
-        center_lon: city.center_lon,
-      },
-      inserted: venuesToInsert.length,
-      venues_sample: insertedVenues.slice(0, 5),
+    const body = (await req.json().catch(() => ({}))) as {
+      cityId?: number;
+      radiusKm?: number;
+      includeCafeRestaurant?: boolean;
+      limit?: number;
     };
 
-    console.log(`Successfully inserted ${venuesToInsert.length} venues for ${city.name}`);
+    const cityId = body.cityId;
+    const radiusKm = body.radiusKm ?? 5;
+    const includeCafeRestaurant = body.includeCafeRestaurant ?? false;
+    const limit = body.limit ?? 50;
 
-    return new Response(JSON.stringify(response), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    if (!cityId || typeof cityId !== "number") {
+      return jsonResponse(
+        { error: "Missing or invalid `cityId` (number required)." },
+        400,
+      );
+    }
 
+    if (radiusKm <= 0 || radiusKm > 50) {
+      return jsonResponse(
+        {
+          error:
+            "`radiusKm` must be between 0 and 50 km (to protect Overpass API).",
+        },
+        400,
+      );
+    }
+
+    // 1. Hent byen fra cities-tabellen
+    const { data: city, error: cityError } = await supabase
+      .from("cities")
+      .select("*")
+      .eq("id", cityId)
+      .single<CityRow>();
+
+    if (cityError || !city) {
+      console.error("City lookup error:", cityError);
+      return jsonResponse(
+        { error: `City with id ${cityId} not found.` },
+        404,
+      );
+    }
+
+    const radiusMeters = radiusKm * 1000;
+
+    // 2. Bygg Overpass-spørring
+    const filtersNightlife = NIGHTLIFE_AMENITIES
+      .map(
+        (amenity) =>
+          `node["amenity"="${amenity}"](around:${radiusMeters},${city.center_lat},${city.center_lon});`,
+      )
+      .join("\n");
+
+    const filtersCafeRestaurant = CAFE_RESTAURANT_AMENITIES
+      .map(
+        (amenity) =>
+          `node["amenity"="${amenity}"](around:${radiusMeters},${city.center_lat},${city.center_lon});`,
+      )
+      .join("\n");
+
+    const overpassFilters = includeCafeRestaurant
+      ? `${filtersNightlife}\n${filtersCafeRestaurant}`
+      : filtersNightlife;
+
+    const overpassQuery = `
+      [out:json][timeout:25];
+      (
+        ${overpassFilters}
+      );
+      out body;
+      >;
+      out skel qt;
+    `;
+
+    // 3. Kall Overpass API
+    const overpassResp = await fetch(
+      "https://overpass-api.de/api/interpreter",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: `data=${encodeURIComponent(overpassQuery)}`,
+      },
+    );
+
+    if (!overpassResp.ok) {
+      const text = await overpassResp.text().catch(() => "");
+      console.error("Overpass error:", overpassResp.status, text);
+      return jsonResponse(
+        { error: "Failed to fetch data from Overpass API." },
+        502,
+      );
+    }
+
+    const overpassJson = (await overpassResp.json()) as {
+      elements?: OverpassElement[];
+    };
+
+    const elements = overpassJson.elements ?? [];
+
+    // 4. Map Overpass-resultater til venues-rows
+    const mappedVenues = elements
+      .filter((el) => el.tags && el.tags.name)
+      .map((el) => {
+        const tags = el.tags ?? {};
+        const amenity = tags.amenity;
+        const isNightlife = amenity
+          ? NIGHTLIFE_AMENITIES.includes(amenity)
+          : false;
+
+        const street = tags["addr:street"] ?? "";
+        const houseNumber = tags["addr:housenumber"] ?? "";
+        const addrCity = tags["addr:city"] ?? city.name;
+        const parts = [street, houseNumber].filter(Boolean);
+        let address = parts.join(" ");
+        if (addrCity) {
+          address = address ? `${address}, ${addrCity}` : addrCity;
+        }
+
+        return {
+          name: tags.name,
+          address: address || null,
+          latitude: el.lat,
+          longitude: el.lon,
+          category: amenity ?? null,
+          is_nightlife: isNightlife,
+          is_default_in_list: isNightlife,
+          city_id: city.id,
+          // beholder felt for debugging og senere filtrering
+          osm_id: el.id,
+          osm_source: "overpass",
+          source: "overpass",
+        };
+      });
+
+    if (mappedVenues.length === 0) {
+      // Ingen venues – men fortsatt ok respons
+      return jsonResponse(
+        {
+          city: basicCityResponse(city),
+          requested_radius_km: radiusKm,
+          include_cafe_restaurant: includeCafeRestaurant,
+          inserted: 0,
+          venues_sample: [],
+        },
+        200,
+      );
+    }
+
+    // 5. Slett gamle overpass-venues for byen
+    const { error: deleteError } = await supabase
+      .from("venues")
+      .delete()
+      .eq("city_id", city.id)
+      .eq("osm_source", "overpass");
+
+    if (deleteError) {
+      console.error("Error deleting old venues:", deleteError);
+      // Vi fortsetter, men logger feilen
+    }
+
+    // 6. Sett inn nye venues
+    const { error: insertError } = await supabase
+      .from("venues")
+      .insert(mappedVenues);
+
+    if (insertError) {
+      console.error("Error inserting venues:", insertError);
+      return jsonResponse(
+        { error: "Failed to insert venues into database." },
+        500,
+      );
+    }
+
+    // Oppdater last_venues_refresh på city
+    const { error: updateCityError } = await supabase
+      .from("cities")
+      .update({ last_venues_refresh: new Date().toISOString() })
+      .eq("id", city.id);
+
+    if (updateCityError) {
+      console.error("Error updating city.last_venues_refresh:", updateCityError);
+      // Ikke kritisk for klienten, så vi bare logger dette
+    }
+
+    const sample = mappedVenues.slice(0, Math.min(limit, 5));
+
+    return jsonResponse(
+      {
+        city: basicCityResponse(city),
+        requested_radius_km: radiusKm,
+        include_cafe_restaurant: includeCafeRestaurant,
+        inserted: mappedVenues.length,
+        venues_sample: sample,
+      },
+      200,
+    );
   } catch (error) {
-    console.error('Unexpected error:', error);
-    return new Response(
-      JSON.stringify({ 
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    console.error("Unexpected error in fetch_venues_for_city:", error);
+    return jsonResponse(
+      { error: "Internal server error." },
+      500,
     );
   }
 });
 
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+    },
+  });
+}
+
+function basicCityResponse(city: CityRow) {
+  return {
+    id: city.id,
+    name: city.name,
+    country_code: city.country_code,
+    center_lat: city.center_lat,
+    center_lon: city.center_lon,
+  };
+}
