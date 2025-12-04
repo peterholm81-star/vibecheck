@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import type { Venue, CheckIn, TimeWindow, HeatmapMode, Intent } from '../types';
+import type { Venue, CheckIn, TimeWindow, HeatmapMode, Intent, VenueCategory } from '../types';
 import type { AgeBand } from '../hooks/useProfile';
 import { generateHeatmapData } from '../mocks/venues';
 import { useCityName } from '../hooks/useCityName';
@@ -10,6 +10,7 @@ import { useVenueHeatmap, getHeatmapColor, getHeatmapGlow, HEATMAP_MODE_COLORS, 
 import { useNotificationSession, type NotificationSessionFilters } from '../hooks/useNotificationSession';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { updateLastSeen } from '../lib/vibeUsers';
+import { useCityVenues, VenuePoint } from '../hooks/useCityVenues';
 import {
   MAPBOX_TOKEN,
   MAP_STYLE,
@@ -164,7 +165,7 @@ interface MapViewProps {
 }
 
 export function MapView({ 
-  venues, 
+  venues: propsVenues, 
   checkIns, 
   timeWindowMinutes, 
   heatmapMode, 
@@ -178,11 +179,68 @@ export function MapView({
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(DEFAULT_ZOOM);
+  const [userPosition, setUserPosition] = useState<{ lat: number; lon: number } | null>(null);
   const cityName = useCityName();
   const { profile, localPrefs } = useProfile();
   
   // Detect if we're on a mobile screen (< 768px width)
   const isMobile = useIsMobile();
+
+  // Use favorite city from profile if set, otherwise use geolocation-based name
+  const effectiveCityName = localPrefs.favoriteCity !== 'auto' ? localPrefs.favoriteCity : cityName;
+
+  // Get user position for venue fetching
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setUserPosition({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+        },
+        () => {
+          // Fallback to default center if geolocation fails
+          setUserPosition({ lat: DEFAULT_CENTER[1], lon: DEFAULT_CENTER[0] });
+        }
+      );
+    } else {
+      setUserPosition({ lat: DEFAULT_CENTER[1], lon: DEFAULT_CENTER[0] });
+    }
+  }, []);
+
+  // Fetch venues from Edge Function based on city
+  const {
+    venues: edgeFunctionVenues,
+    loading: venuesLoading,
+    error: venuesError,
+    cityId: resolvedCityId,
+  } = useCityVenues({
+    cityName: effectiveCityName,
+    userLat: userPosition?.lat ?? DEFAULT_CENTER[1],
+    userLon: userPosition?.lon ?? DEFAULT_CENTER[0],
+    radiusKm: 10,
+    nightlifeOnly: true,
+    enabled: !!userPosition && !!effectiveCityName,
+  });
+
+  // Convert edge function venues to the Venue type expected by the rest of the component
+  const convertedEdgeVenues: Venue[] = useMemo(() => {
+    return edgeFunctionVenues.map((v: VenuePoint) => ({
+      id: v.id,
+      name: v.name,
+      address: '', // Not available from edge function
+      latitude: v.lat,
+      longitude: v.lon,
+      category: (v.category as VenueCategory) || 'bar',
+      createdAt: new Date().toISOString(),
+    }));
+  }, [edgeFunctionVenues]);
+
+  // Use edge function venues if available and cityId was resolved, otherwise fall back to props
+  const venues = useMemo(() => {
+    if (resolvedCityId && convertedEdgeVenues.length > 0) {
+      return convertedEdgeVenues;
+    }
+    return propsVenues;
+  }, [resolvedCityId, convertedEdgeVenues, propsVenues]);
 
   // Heatmap 2.0: Use the new venue heatmap hook for real scores
   const { heatmapVenues, isLoading: heatmapLoading, refresh: refreshHeatmap } = useVenueHeatmap();
@@ -202,9 +260,6 @@ export function MapView({
     startSession,
     stopSession,
   } = useNotificationSession();
-
-  // Use favorite city from profile if set, otherwise use geolocation
-  const effectiveCityName = localPrefs.favoriteCity !== 'auto' ? localPrefs.favoriteCity : cityName;
 
   // Generate heatmap data from check-ins based on current mode
   // This is used as fallback/legacy data
@@ -497,6 +552,24 @@ export function MapView({
     <div className="flex-1 relative rounded-xl overflow-hidden">
       {/* Map container */}
       <div ref={mapContainer} className="absolute inset-0" />
+
+      {/* Venues loading indicator */}
+      {venuesLoading && (
+        <div className="absolute top-16 left-1/2 transform -translate-x-1/2 z-20">
+          <div className="bg-slate-900/90 backdrop-blur-sm px-4 py-2 rounded-full border border-slate-700/50">
+            <span className="text-xs text-slate-300">Laster venues...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Venues error indicator */}
+      {venuesError && !venuesLoading && (
+        <div className="absolute top-16 left-1/2 transform -translate-x-1/2 z-20">
+          <div className="bg-red-900/80 backdrop-blur-sm px-4 py-2 rounded-full border border-red-700/50">
+            <span className="text-xs text-red-200">{venuesError}</span>
+          </div>
+        </div>
+      )}
 
       {/* ============================================
           RESPONSIVE MAP OVERLAYS
