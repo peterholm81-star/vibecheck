@@ -7,7 +7,6 @@
 
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Users, UserPlus, Activity, Lock, RefreshCw, AlertCircle } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 
 // Admin PIN - can be overridden via environment variable
 const ADMIN_PIN = import.meta.env.VITE_ADMIN_PIN || '9281';
@@ -17,6 +16,14 @@ interface UserStats {
   totalUsers: number;
   newLast24h: number;
   activeLast10min: number;
+}
+
+interface AdminStatsResponse {
+  totalUsers?: number;
+  newUsers24h?: number;
+  activeLast10m?: number;
+  error?: string;
+  details?: string;
 }
 
 // ============================================
@@ -187,43 +194,25 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchStats = async () => {
-    console.log('[AdminDashboard] Fetching stats from vibe_users...');
+    console.log('[AdminDashboard] Fetching stats from /api/admin-stats...');
 
     try {
-      // Calculate timestamps for filtering
-      const now = new Date();
-      const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-      const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
+      // Fetch stats from Edge Function API
+      const response = await fetch('/api/admin-stats');
+      const data: AdminStatsResponse = await response.json();
 
-      console.log('[AdminDashboard] Time filters:', { twentyFourHoursAgo, tenMinutesAgo });
+      console.log('[AdminDashboard] API response:', data);
 
-      // Fetch all three metrics in parallel using the shared Supabase client
-      const [totalResult, newResult, activeResult] = await Promise.all([
-        // Total users: SELECT COUNT(*) FROM vibe_users
-        supabase.from('vibe_users').select('*', { count: 'exact', head: true }),
-        // New in last 24 hours
-        supabase.from('vibe_users').select('*', { count: 'exact', head: true }).gte('created_at', twentyFourHoursAgo),
-        // Active in last 10 minutes
-        supabase.from('vibe_users').select('*', { count: 'exact', head: true }).gte('last_seen_at', tenMinutesAgo),
-      ]);
+      // Check for API errors
+      if (data.error) {
+        throw new Error(data.details || data.error);
+      }
 
-      // Log raw results
-      console.log('[AdminDashboard] Results:', {
-        total: { count: totalResult.count, error: totalResult.error?.message },
-        new24h: { count: newResult.count, error: newResult.error?.message },
-        active10min: { count: activeResult.count, error: activeResult.error?.message },
-      });
-
-      // Check for Supabase errors
-      if (totalResult.error) throw new Error(totalResult.error.message);
-      if (newResult.error) throw new Error(newResult.error.message);
-      if (activeResult.error) throw new Error(activeResult.error.message);
-
-      // Set stats
-      const newStats = {
-        totalUsers: totalResult.count ?? 0,
-        newLast24h: newResult.count ?? 0,
-        activeLast10min: activeResult.count ?? 0,
+      // Set stats from API response
+      const newStats: UserStats = {
+        totalUsers: data.totalUsers ?? 0,
+        newLast24h: data.newUsers24h ?? 0,
+        activeLast10min: data.activeLast10m ?? 0,
       };
 
       console.log('[AdminDashboard] Stats:', newStats);
