@@ -527,17 +527,8 @@ function MainApp({ userId }: MainAppProps) {
 
       case 'profile':
         return <ProfileSettings />;
-
-      case 'insights':
-        // Insights renders its own full-page layout
-        return null;
     }
   };
-
-  // If insights tab is active, render its full-page layout
-  if (activeTab === 'insights') {
-    return <InsightsDashboard onBack={() => setActiveTab('map')} />;
-  }
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col overflow-x-hidden">
