@@ -915,16 +915,6 @@ function App() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // Show admin dashboard if on /admin route
-  if (showAdmin) {
-    return <AdminDashboard onBack={handleAdminBack} />;
-  }
-
-  // Show insights dashboard if on /insights route
-  if (showInsights) {
-    return <InsightsDashboard onBack={handleInsightsBack} />;
-  }
-
   // Vent på at vi har sjekket onboarding-status
   if (hasOnboarded === null) {
     return (
