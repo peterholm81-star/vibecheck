@@ -1,13 +1,15 @@
 /**
  * Admin Dashboard
  * 
- * Admin panel showing user statistics.
+ * Admin panel showing user statistics and venues management.
  * PIN authentication is handled by AdminApp.
  * Styled to match the existing Insights dark theme.
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Users, UserPlus, Activity, RefreshCw, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Users, UserPlus, Activity, RefreshCw, AlertCircle, MapPin, Download } from 'lucide-react';
+import { getCities, City } from '../api/cities';
+import { refreshVenuesForCity } from '../api/venues';
 
 interface UserStats {
   totalUsers: number;
@@ -79,6 +81,167 @@ function StatsCard({
       {subtitle && (
         <p className="text-xs text-slate-600 mt-2">{subtitle}</p>
       )}
+    </div>
+  );
+}
+
+// ============================================
+// VENUES REFRESH SECTION
+// ============================================
+
+function VenuesRefreshSection() {
+  const [cities, setCities] = useState<City[]>([]);
+  const [selectedCityId, setSelectedCityId] = useState<number | null>(null);
+  const [radiusKm, setRadiusKm] = useState<number>(5);
+  const [includeCafeRestaurant, setIncludeCafeRestaurant] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [loadingCities, setLoadingCities] = useState(true);
+  const [resultMessage, setResultMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = await getCities();
+        setCities(list);
+        if (list.length > 0) {
+          setSelectedCityId(list[0].id);
+        }
+      } catch (error) {
+        console.error(error);
+        setErrorMessage("Kunne ikke hente byliste.");
+      } finally {
+        setLoadingCities(false);
+      }
+    })();
+  }, []);
+
+  const handleRefresh = async () => {
+    if (!selectedCityId) return;
+
+    setLoading(true);
+    setResultMessage(null);
+    setErrorMessage(null);
+
+    try {
+      const data = await refreshVenuesForCity({
+        cityId: selectedCityId,
+        radiusKm,
+        includeCafeRestaurant,
+      });
+
+      const inserted = data?.inserted ?? 0;
+      const cityName = data?.city?.name ?? "byen";
+
+      setResultMessage(
+        `Oppdaterte venues for ${cityName}. Antall innsatte venues: ${inserted}.`
+      );
+    } catch (error: unknown) {
+      console.error(error);
+      const errorMsg = error instanceof Error ? error.message : "Noe gikk galt under refresh.";
+      setErrorMessage(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-10">
+      {/* Section Header */}
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+          <MapPin size={20} className="text-emerald-400" />
+          Venues fra OpenStreetMap
+        </h2>
+        <p className="text-sm text-slate-500 mt-1">
+          Hent og oppdater venues fra OpenStreetMap/Overpass API
+        </p>
+      </div>
+
+      <div className="bg-[#11121b] border border-neutral-800/50 rounded-2xl p-6 space-y-5">
+        {loadingCities ? (
+          <div className="flex items-center gap-2 text-slate-400">
+            <RefreshCw size={16} className="animate-spin" />
+            <span className="text-sm">Laster byer...</span>
+          </div>
+        ) : (
+          <>
+            {/* City select */}
+            <div className="flex flex-col gap-2">
+              <label className="text-sm text-slate-400 font-medium">By</label>
+              <select
+                className="bg-[#1a1b2b] border border-neutral-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500/50 transition-colors"
+                value={selectedCityId ?? ""}
+                onChange={(e) => setSelectedCityId(Number(e.target.value))}
+              >
+                {cities.map((city) => (
+                  <option key={city.id} value={city.id}>
+                    {city.name} ({city.country_code})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Radius */}
+            <div className="flex flex-col gap-2">
+              <label className="text-sm text-slate-400 font-medium">
+                Radius (km) rundt byens sentrum
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={30}
+                className="bg-[#1a1b2b] border border-neutral-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500/50 transition-colors w-32"
+                value={radiusKm}
+                onChange={(e) => setRadiusKm(Number(e.target.value))}
+              />
+            </div>
+
+            {/* Cafe/restaurant toggle */}
+            <label className="inline-flex items-center gap-3 text-sm text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                className="w-5 h-5 rounded bg-[#1a1b2b] border-neutral-700 text-emerald-500 focus:ring-emerald-500/30 cursor-pointer"
+                checked={includeCafeRestaurant}
+                onChange={(e) => setIncludeCafeRestaurant(e.target.checked)}
+              />
+              Inkluder cafe/restaurant i tillegg til bar/pub/nightclub
+            </label>
+
+            {/* Button */}
+            <button
+              onClick={handleRefresh}
+              disabled={loading || !selectedCityId}
+              className="flex items-center gap-2 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-sm font-medium text-white transition-colors"
+            >
+              {loading ? (
+                <>
+                  <RefreshCw size={16} className="animate-spin" />
+                  Oppdaterer venues...
+                </>
+              ) : (
+                <>
+                  <Download size={16} />
+                  Refresh venues fra OpenStreetMap
+                </>
+              )}
+            </button>
+
+            {/* Messages */}
+            {resultMessage && (
+              <div className="p-4 bg-emerald-900/20 border border-emerald-800/50 rounded-xl">
+                <p className="text-sm text-emerald-400">{resultMessage}</p>
+              </div>
+            )}
+            {errorMessage && (
+              <div className="p-4 bg-red-900/20 border border-red-800/50 rounded-xl flex items-center gap-3">
+                <AlertCircle size={18} className="text-red-400 flex-shrink-0" />
+                <p className="text-sm text-red-300">{errorMessage}</p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -249,6 +412,9 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
                 isLoading={isLoading}
               />
             </div>
+
+            {/* Venues Refresh Section */}
+            <VenuesRefreshSection />
 
             {/* Footer */}
             <footer className="mt-16 pt-8 border-t border-neutral-800/50">
