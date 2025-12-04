@@ -3,11 +3,11 @@
  * Premium dark-mode analytics dashboard with sidebar navigation
  * Global timeRange and selectedVenueId filters affect all components
  * 
- * PIN-protected: requires authentication before showing dashboard
+ * PIN authentication is handled by InsightsApp
  */
 
-import { useState, useMemo, useEffect } from 'react';
-import { ArrowLeft, Calendar, RefreshCw, MapPin, BarChart3, Flame, TrendingUp, Users, Lock, AlertCircle } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { ArrowLeft, Calendar, RefreshCw, MapPin, BarChart3, Flame, TrendingUp, Users } from 'lucide-react';
 import {
   KPISection,
   TrendGraphSection,
@@ -19,109 +19,9 @@ import {
   VibeImpactEstimator,
 } from '../components/insights';
 
-// PIN configuration for Insights access
-const INSIGHTS_PIN = import.meta.env.VITE_INSIGHTS_PIN || '9281';
-const INSIGHTS_SESSION_KEY = 'vibecheck_insights_authed';
-
 interface InsightsDashboardProps {
   onBack?: () => void;
   venueId?: string;
-}
-
-// ============================================
-// PIN GATE COMPONENT FOR INSIGHTS
-// ============================================
-
-function InsightsPinGate({ onSuccess }: { onSuccess: () => void }) {
-  const [pin, setPin] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [isChecking, setIsChecking] = useState(false);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsChecking(true);
-    setError(null);
-
-    setTimeout(() => {
-      if (pin === INSIGHTS_PIN) {
-        sessionStorage.setItem(INSIGHTS_SESSION_KEY, 'true');
-        onSuccess();
-      } else {
-        setError('Feil kode. Prøv igjen.');
-        setPin('');
-      }
-      setIsChecking(false);
-    }, 500);
-  };
-
-  return (
-    <div className="min-h-screen bg-[#0f0f17] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <div className="bg-[#11121b] border border-neutral-800/50 rounded-2xl p-8">
-          {/* Icon */}
-          <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 bg-violet-500/20 rounded-2xl flex items-center justify-center">
-              <Lock size={32} className="text-violet-400" />
-            </div>
-          </div>
-
-          {/* Title */}
-          <h1 className="text-2xl font-bold text-white text-center mb-2">
-            Insights login
-          </h1>
-          <p className="text-slate-500 text-center mb-8">
-            Skriv inn koden for å se venue-innsikt
-          </p>
-
-          {/* Form */}
-          <form onSubmit={handleSubmit}>
-            <label className="block text-sm font-medium text-slate-400 mb-2">
-              Skriv kode
-            </label>
-            <input
-              type="password"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={6}
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-              placeholder="••••"
-              className="w-full bg-[#1a1b2b] border border-neutral-700 rounded-xl px-4 py-3 text-white text-center text-2xl tracking-widest focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 placeholder:text-slate-600"
-              autoFocus
-            />
-
-            {/* Error message */}
-            {error && (
-              <p className="mt-3 text-sm text-red-400 text-center flex items-center justify-center gap-2">
-                <AlertCircle size={14} />
-                {error}
-              </p>
-            )}
-
-            {/* Submit button */}
-            <button
-              type="submit"
-              disabled={pin.length < 4 || isChecking}
-              className={`w-full mt-6 py-3 px-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
-                pin.length >= 4 && !isChecking
-                  ? 'bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white shadow-lg shadow-violet-500/30'
-                  : 'bg-slate-700 text-slate-500 cursor-not-allowed'
-              }`}
-            >
-              {isChecking ? (
-                <>
-                  <RefreshCw size={18} className="animate-spin" />
-                  Sjekker...
-                </>
-              ) : (
-                'Logg inn'
-              )}
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // Section type for sidebar navigation
@@ -537,33 +437,12 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
 }
 
 // ============================================
-// MAIN INSIGHTS DASHBOARD COMPONENT (with PIN gate)
+// MAIN INSIGHTS DASHBOARD COMPONENT
+// PIN authentication is now handled by InsightsApp
 // ============================================
 
 export function InsightsDashboard({ onBack }: InsightsDashboardProps) {
-  const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
-
-  // Check session storage on mount
-  useEffect(() => {
-    const authed = sessionStorage.getItem(INSIGHTS_SESSION_KEY) === 'true';
-    setIsAuthed(authed);
-  }, []);
-
-  // Show loading while checking auth
-  if (isAuthed === null) {
-    return (
-      <div className="min-h-screen bg-[#0f0f17] flex items-center justify-center">
-        <RefreshCw size={32} className="text-violet-400 animate-spin" />
-      </div>
-    );
-  }
-
-  // Show PIN gate if not authed
-  if (!isAuthed) {
-    return <InsightsPinGate onSuccess={() => setIsAuthed(true)} />;
-  }
-
-  // Show dashboard content
+  // Render dashboard content directly - PIN is handled by InsightsApp
   return <InsightsDashboardContent onBack={onBack} />;
 }
 

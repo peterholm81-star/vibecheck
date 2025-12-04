@@ -1,16 +1,13 @@
 /**
  * Admin Dashboard
  * 
- * PIN-protected admin panel showing user statistics.
+ * Admin panel showing user statistics.
+ * PIN authentication is handled by AdminApp.
  * Styled to match the existing Insights dark theme.
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Users, UserPlus, Activity, Lock, RefreshCw, AlertCircle } from 'lucide-react';
-
-// Admin PIN - can be overridden via environment variable
-const ADMIN_PIN = import.meta.env.VITE_ADMIN_PIN || '9281';
-const SESSION_KEY = 'vibecheck_admin_authed';
+import { ArrowLeft, Users, UserPlus, Activity, RefreshCw, AlertCircle } from 'lucide-react';
 
 interface UserStats {
   totalUsers: number;
@@ -24,103 +21,6 @@ interface AdminStatsResponse {
   activeLast10m?: number;
   error?: string;
   details?: string;
-}
-
-// ============================================
-// PIN GATE COMPONENT
-// ============================================
-
-function PinGate({ onSuccess }: { onSuccess: () => void }) {
-  const [pin, setPin] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [isChecking, setIsChecking] = useState(false);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsChecking(true);
-    setError(null);
-
-    // Small delay to prevent brute force
-    setTimeout(() => {
-      if (pin === ADMIN_PIN) {
-        sessionStorage.setItem(SESSION_KEY, 'true');
-        onSuccess();
-      } else {
-        setError('Feil kode. Prøv igjen.');
-        setPin('');
-      }
-      setIsChecking(false);
-    }, 500);
-  };
-
-  return (
-    <div className="min-h-screen bg-[#0f0f17] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <div className="bg-[#11121b] border border-neutral-800/50 rounded-2xl p-8">
-          {/* Icon */}
-          <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 bg-violet-500/20 rounded-2xl flex items-center justify-center">
-              <Lock size={32} className="text-violet-400" />
-            </div>
-          </div>
-
-          {/* Title */}
-          <h1 className="text-2xl font-bold text-white text-center mb-2">
-            Admin login
-          </h1>
-          <p className="text-slate-500 text-center mb-8">
-            Skriv inn admin-koden for å fortsette
-          </p>
-
-          {/* Form */}
-          <form onSubmit={handleSubmit}>
-            <label className="block text-sm font-medium text-slate-400 mb-2">
-              Skriv admin-kode
-            </label>
-            <input
-              type="password"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={6}
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-              placeholder="••••"
-              className="w-full bg-[#1a1b2b] border border-neutral-700 rounded-xl px-4 py-3 text-white text-center text-2xl tracking-widest focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 placeholder:text-slate-600"
-              autoFocus
-            />
-
-            {/* Error message */}
-            {error && (
-              <p className="mt-3 text-sm text-red-400 text-center flex items-center justify-center gap-2">
-                <AlertCircle size={14} />
-                {error}
-              </p>
-            )}
-
-            {/* Submit button */}
-            <button
-              type="submit"
-              disabled={pin.length < 4 || isChecking}
-              className={`w-full mt-6 py-3 px-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
-                pin.length >= 4 && !isChecking
-                  ? 'bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white shadow-lg shadow-violet-500/30'
-                  : 'bg-slate-700 text-slate-500 cursor-not-allowed'
-              }`}
-            >
-              {isChecking ? (
-                <>
-                  <RefreshCw size={18} className="animate-spin" />
-                  Sjekker...
-                </>
-              ) : (
-                'Logg inn'
-              )}
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // ============================================
@@ -373,6 +273,7 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
 
 // ============================================
 // MAIN ADMIN DASHBOARD COMPONENT
+// PIN authentication is now handled by AdminApp
 // ============================================
 
 interface AdminDashboardProps {
@@ -380,29 +281,7 @@ interface AdminDashboardProps {
 }
 
 export function AdminDashboard({ onBack }: AdminDashboardProps) {
-  const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
-
-  // Check session storage on mount
-  useEffect(() => {
-    const authed = sessionStorage.getItem(SESSION_KEY) === 'true';
-    setIsAuthed(authed);
-  }, []);
-
-  // Show loading while checking auth
-  if (isAuthed === null) {
-    return (
-      <div className="min-h-screen bg-[#0f0f17] flex items-center justify-center">
-        <RefreshCw size={32} className="text-violet-400 animate-spin" />
-      </div>
-    );
-  }
-
-  // Show PIN gate if not authed
-  if (!isAuthed) {
-    return <PinGate onSuccess={() => setIsAuthed(true)} />;
-  }
-
-  // Show dashboard content
+  // Render dashboard content directly - PIN is handled by AdminApp
   return <DashboardContent onBack={onBack} />;
 }
 
