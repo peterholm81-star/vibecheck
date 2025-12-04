@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Map, List, PlusCircle, RefreshCw, AlertCircle, User, Heart, Activity, Users, Sparkles, Search } from 'lucide-react';
+import { Map, List, PlusCircle, RefreshCw, AlertCircle, User, Heart, Activity, Users, Sparkles, BarChart3, Search } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import { LoginPage } from './pages/LoginPage';
-import { AdminApp } from './apps/AdminApp';
-import { InsightsApp } from './apps/InsightsApp';
+import { InsightsDashboard } from './pages/InsightsDashboard';
+import { AdminDashboard } from './pages/AdminDashboard';
 import { getVenues, getRecentCheckIns } from './api';
 import { MapView } from './components/MapView';
 import { VenueList } from './components/VenueList';
@@ -28,7 +28,7 @@ import { createCheckIn, checkInWithExternalPlace } from './lib/checkIns';
 // TYPES
 // ============================================
 
-type Tab = 'map' | 'venues' | 'checkin' | 'profile';
+type Tab = 'map' | 'venues' | 'checkin' | 'profile' | 'insights';
 
 interface MainAppState {
   venues: Venue[];
@@ -86,7 +86,7 @@ function canCheckInAgain(
 }
 
 // ============================================
-// MAIN APP COMPONENT (user app with tabs)
+// MAIN APP COMPONENT (all existing logic)
 // ============================================
 
 interface MainAppProps {
@@ -319,6 +319,27 @@ function MainApp({ userId }: MainAppProps) {
   }, []);
 
   // Handle check-in submission for an existing venue
+  // Since the user selects from existing venues in the dropdown,
+  // we already have the venueId - no need to create a new venue.
+  //
+  // Profile data is used as defaults for check-in fields:
+  // - gender: from profile.gender
+  // - ageBand: derived from profile.birthYear
+  // - relationshipStatus: form value (already prefilled from profile)
+  //
+  // The "single in heatmap" logic:
+  // A user counts as "single" if:
+  //   - profile.showAsSingle === true, OR
+  //   - profile.relationshipStatus === 'single'
+  // This is stored via the relationshipStatus field in check_ins.
+  // Future heatmap queries can filter by relationship_status = 'single'.
+  //
+  // NOTE: The check_ins table should have columns for:
+  //   - relationship_status (text/enum)
+  //   - gender (text/enum)
+  //   - age_band (text/enum)
+  //   - ons_intent (text/enum)
+  // If these columns are missing, consider adding a migration.
   const handleCheckInSubmit = async (
     venueId: string,
     vibeScore: VibeScore,
@@ -386,12 +407,13 @@ function MainApp({ userId }: MainAppProps) {
     setSelectedVenueId(null);
   };
 
-  // Tab configuration - only user tabs (no insights)
+  // Tab configuration
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'map', label: 'Map', icon: <Map size={18} /> },
     { id: 'venues', label: 'Venues', icon: <List size={18} /> },
     { id: 'checkin', label: 'Check-in', icon: <PlusCircle size={18} /> },
     { id: 'profile', label: 'Profil', icon: <User size={18} /> },
+    { id: 'insights', label: 'Insights', icon: <BarChart3 size={18} /> },
   ];
 
   // Get selected venue
@@ -505,12 +527,17 @@ function MainApp({ userId }: MainAppProps) {
 
       case 'profile':
         return <ProfileSettings />;
+
+      case 'insights':
+        // Insights renders its own full-page layout
+        return null;
     }
   };
 
-  // Suppress unused variable warnings
-  void isMobile;
-  void smartCheckinState;
+  // If insights tab is active, render its full-page layout
+  if (activeTab === 'insights') {
+    return <InsightsDashboard onBack={() => setActiveTab('map')} />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col overflow-x-hidden">
@@ -801,36 +828,72 @@ function MainApp({ userId }: MainAppProps) {
 }
 
 // ============================================
-// USER APP WRAPPER (auth + onboarding)
+// APP COMPONENT (auth wrapper + onboarding)
+// ============================================
+// Flyten er:
+// 1. Sjekk om bruker har fullført onboarding (localStorage)
+// 2. Hvis ikke → vis Onboarding-skjerm
+// 3. Etter onboarding → sjekk auth
+// 4. Hvis ikke innlogget → vis LoginPage
+// 5. Hvis innlogget → vis MainApp
 // ============================================
 
 const ONBOARDING_KEY = 'vibecheck_onboarded';
 
-function UserApp() {
+/**
+ * Check if current URL is the admin route
+ */
+function isAdminRoute(): boolean {
+  return window.location.pathname === '/admin';
+}
+
+function App() {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Onboarding state - starter som null til vi har sjekket localStorage
   const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null);
+  
+  // Admin route state
+  const [showAdmin, setShowAdmin] = useState(isAdminRoute());
 
-  // Check onboarding status
+  // Sjekk localStorage for onboarding-status ved oppstart
   useEffect(() => {
     const onboarded = localStorage.getItem(ONBOARDING_KEY) === 'true';
     setHasOnboarded(onboarded);
   }, []);
 
-  // Handle onboarding complete
+  // Handle browser back/forward for admin route
+  useEffect(() => {
+    const handlePopState = () => {
+      setShowAdmin(isAdminRoute());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Handler for leaving admin
+  const handleAdminBack = () => {
+    window.history.pushState({}, '', '/');
+    setShowAdmin(false);
+  };
+
+  // Håndter fullført onboarding
   const handleOnboardingComplete = () => {
     localStorage.setItem(ONBOARDING_KEY, 'true');
     setHasOnboarded(true);
   };
 
-  // Check auth
   useEffect(() => {
+    // Check if Supabase is configured
     if (!supabase) {
+      // If not configured, skip auth and show MainApp directly
       setLoading(false);
-      setUser({ id: 'mock-user' } as SupabaseUser);
+      setUser({ id: 'mock-user' } as SupabaseUser); // Mock user for development
       return;
     }
 
+    // DEV: Allow bypassing auth with ?devbypass=true in URL
     const urlParams = new URLSearchParams(window.location.search);
     if (import.meta.env.DEV && urlParams.get('devbypass') === 'true') {
       setLoading(false);
@@ -838,11 +901,13 @@ function UserApp() {
       return;
     }
 
+    // Get current user
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user ?? null);
       setLoading(false);
     });
 
+    // Listen for auth state changes
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
@@ -850,57 +915,47 @@ function UserApp() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // Loading onboarding check
+  // Show admin dashboard if on /admin route
+  if (showAdmin) {
+    return <AdminDashboard onBack={handleAdminBack} />;
+  }
+
+  // Vent på at vi har sjekket onboarding-status
   if (hasOnboarded === null) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <RefreshCw size={48} className="text-violet-400 animate-spin" />
+        <div className="text-center">
+          <RefreshCw size={48} className="mx-auto text-violet-400 animate-spin mb-4" />
+          <p className="text-slate-300 font-medium">Laster...</p>
+        </div>
       </div>
     );
   }
 
-  // Show onboarding
+  // Vis onboarding hvis bruker ikke har fullført den
   if (!hasOnboarded) {
     return <Onboarding onComplete={handleOnboardingComplete} />;
   }
 
-  // Loading auth
+  // Loading state (auth)
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <RefreshCw size={48} className="text-violet-400 animate-spin" />
+        <div className="text-center">
+          <RefreshCw size={48} className="mx-auto text-violet-400 animate-spin mb-4" />
+          <p className="text-slate-300 font-medium">Laster...</p>
+        </div>
       </div>
     );
   }
 
-  // Not logged in
+  // Not logged in - show login page
   if (user === null) {
     return <LoginPage />;
   }
 
   // Logged in - show main app
   return <MainApp userId={user.id} />;
-}
-
-// ============================================
-// APP ROUTER - Routes based on URL path
-// ============================================
-
-function App() {
-  const pathname = window.location.pathname;
-
-  // /admin route - show AdminApp (with PIN)
-  if (pathname === '/admin') {
-    return <AdminApp />;
-  }
-
-  // /insights or /insight route - show InsightsApp (with PIN)
-  if (pathname === '/insights' || pathname === '/insight') {
-    return <InsightsApp />;
-  }
-
-  // Default: UserApp (Map, Venues, Check-in, Profil)
-  return <UserApp />;
 }
 
 export default App;
