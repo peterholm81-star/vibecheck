@@ -12,7 +12,9 @@ import { VenueDetail } from './components/VenueDetail';
 import { CheckInForm } from './components/CheckInForm';
 import { ProfileSettings } from './components/ProfileSettings';
 import { MobileFilters } from './components/MobileFilters';
-import { Onboarding } from './components/Onboarding';
+// Legacy onboarding kept for reference: import { Onboarding } from './components/Onboarding';
+import { OnboardingPage } from './features/onboarding/OnboardingPage';
+import { checkOnboardingComplete } from './lib/vibeUsers';
 import { ToastContainer } from './components/Toast';
 import { useProfile, type AgeBand } from './hooks/useProfile';
 import { useToast } from './hooks/useToast';
@@ -828,7 +830,8 @@ function MainApp({ userId }: MainAppProps) {
 // 5. Hvis innlogget → vis MainApp
 // ============================================
 
-const ONBOARDING_KEY = 'vibecheck_onboarded';
+// Onboarding 2.0 key (synced with Supabase field)
+const ONBOARDING_COMPLETE_KEY = 'vibecheck_onboarding_complete';
 
 /**
  * Check if current URL is the admin route
@@ -844,39 +847,80 @@ function isInsightsRoute(): boolean {
   return window.location.pathname === '/insights';
 }
 
+/**
+ * Check if current URL is the onboarding route
+ */
+function isOnboardingRoute(): boolean {
+  return window.location.pathname === '/onboarding';
+}
+
 function App() {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // Onboarding state - starter som null til vi har sjekket localStorage
+  // Onboarding 2.0 state - null until checked
   const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
   
   // Admin route state
   const [showAdmin, setShowAdmin] = useState(isAdminRoute());
   
   // Insights route state
   const [showInsights, setShowInsights] = useState(isInsightsRoute());
+  
+  // Onboarding route state
+  const [showOnboarding, setShowOnboarding] = useState(isOnboardingRoute());
 
-  // Sjekk localStorage for onboarding-status ved oppstart
+  // Sjekk onboarding-status ved oppstart (Supabase + localStorage fallback)
   useEffect(() => {
-    const onboarded = localStorage.getItem(ONBOARDING_KEY) === 'true';
-    setHasOnboarded(onboarded);
+    async function checkOnboarding() {
+      // First check localStorage for fast initial render
+      const localComplete = localStorage.getItem(ONBOARDING_COMPLETE_KEY) === 'true';
+      
+      if (localComplete) {
+        setHasOnboarded(true);
+        setOnboardingChecked(true);
+        return;
+      }
+      
+      // Then check Supabase for authoritative status
+      try {
+        const complete = await checkOnboardingComplete();
+        setHasOnboarded(complete);
+        
+        // Sync to localStorage if Supabase says complete
+        if (complete) {
+          localStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
+        }
+      } catch (err) {
+        console.error('[App] Failed to check onboarding status:', err);
+        setHasOnboarded(false);
+      }
+      
+      setOnboardingChecked(true);
+    }
+    
+    checkOnboarding();
   }, []);
 
-  // Handle browser back/forward for admin and insights routes
+  // Handle browser back/forward for admin, insights, and onboarding routes
   useEffect(() => {
     const handlePopState = () => {
       setShowAdmin(isAdminRoute());
       setShowInsights(isInsightsRoute());
+      setShowOnboarding(isOnboardingRoute());
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Håndter fullført onboarding
+  // Håndter fullført onboarding 2.0
   const handleOnboardingComplete = () => {
-    localStorage.setItem(ONBOARDING_KEY, 'true');
+    localStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
     setHasOnboarded(true);
+    setShowOnboarding(false);
+    // Navigate to main app
+    window.history.pushState({}, '', '/');
   };
 
   useEffect(() => {
@@ -923,7 +967,7 @@ function App() {
   }
 
   // Vent på at vi har sjekket onboarding-status
-  if (hasOnboarded === null) {
+  if (!onboardingChecked || hasOnboarded === null) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="text-center">
@@ -934,9 +978,9 @@ function App() {
     );
   }
 
-  // Vis onboarding hvis bruker ikke har fullført den
-  if (!hasOnboarded) {
-    return <Onboarding onComplete={handleOnboardingComplete} />;
+  // Show onboarding route or redirect if not completed
+  if (showOnboarding || !hasOnboarded) {
+    return <OnboardingPage onComplete={handleOnboardingComplete} />;
   }
 
   // Loading state (auth)

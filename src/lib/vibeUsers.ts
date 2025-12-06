@@ -7,8 +7,45 @@
 import { supabase } from './supabase';
 import { getAnonUserId } from '../utils/anonUserId';
 
+// ============================================
+// SQL FOR SUPABASE (KJØRES MANUELT I SUPABASE SQL EDITOR):
+// ============================================
+// ALTER TABLE public.vibe_users
+//   ADD COLUMN IF NOT EXISTS mode text,
+//   ADD COLUMN IF NOT EXISTS vibe_preferences text[],
+//   ADD COLUMN IF NOT EXISTS age_group text,
+//   ADD COLUMN IF NOT EXISTS onboarding_complete boolean NOT NULL DEFAULT false;
+// ============================================
+
 /**
- * Onboarding data structure matching the wizard steps
+ * Onboarding 2.0 data structure matching the new wizard steps
+ */
+export interface OnboardingData2 {
+  mode: string | null;              // What user is doing tonight (party, chill, date_night, etc.)
+  vibe_preferences: string[];       // What user is looking for (danse, rolig_prat, flørte, ons, etc.)
+  age_group: string | null;         // Age group (18-22, 23-27, etc.)
+  onboarding_complete: boolean;     // Whether onboarding is finished
+}
+
+/**
+ * Extended vibe_users row type (matches Supabase table with new fields)
+ */
+export interface VibeUserRow {
+  anon_user_id: string;
+  city: string | null;
+  age_group: string | null;
+  energy_level: string | null;
+  goals: string[] | null;
+  mode: string | null;
+  vibe_preferences: string[] | null;
+  onboarding_complete: boolean;
+  onboarding_data: Record<string, unknown> | null;
+  created_at: string;
+  last_seen_at: string;
+}
+
+/**
+ * Legacy onboarding data structure (for backwards compatibility)
  */
 export interface OnboardingData {
   mode: string | null;           // What user is looking for (danse, rolig_prat, etc.)
@@ -18,7 +55,7 @@ export interface OnboardingData {
 }
 
 /**
- * Map onboarding mode to goals array
+ * Map onboarding mode to goals array (legacy)
  */
 function modeToGoals(mode: string | null): string[] {
   if (!mode) return [];
@@ -38,7 +75,7 @@ function modeToGoals(mode: string | null): string[] {
 }
 
 /**
- * Map mood number to energy level string
+ * Map mood number to energy level string (legacy)
  */
 function moodToEnergyLevel(mood: number | null): string | null {
   if (!mood) return null;
@@ -54,7 +91,7 @@ function moodToEnergyLevel(mood: number | null): string | null {
 }
 
 /**
- * Map age range ID to display label
+ * Map age range ID to display label (legacy)
  */
 function ageRangeToLabel(ageRange: string | null): string | null {
   if (!ageRange) return null;
@@ -70,7 +107,7 @@ function ageRangeToLabel(ageRange: string | null): string | null {
 }
 
 /**
- * Map city ID to city name
+ * Map city ID to city name (legacy)
  */
 function cityIdToName(cityId: string | null): string | null {
   if (!cityId) return null;
@@ -84,26 +121,19 @@ function cityIdToName(cityId: string | null): string | null {
 
 /**
  * Save or update onboarding data to Supabase vibe_users table.
- * 
- * Uses upsert: if the anon_user_id already exists, updates the row.
- * If not, creates a new row.
- * 
- * @param onboardingData - The collected onboarding preferences
- * @returns Promise<{ success: boolean; error?: string }>
+ * (Legacy function for backwards compatibility)
  */
 export async function saveOnboardingToSupabase(
   onboardingData: OnboardingData
 ): Promise<{ success: boolean; error?: string }> {
-  // Check if Supabase is configured
   if (!supabase) {
     console.warn('Supabase not configured, skipping onboarding save');
-    return { success: true }; // Return success to not block the user
+    return { success: true };
   }
 
   try {
     const anonUserId = getAnonUserId();
     
-    // Prepare data for vibe_users table
     const userData = {
       anon_user_id: anonUserId,
       city: cityIdToName(onboardingData.favoriteCityId),
@@ -114,7 +144,6 @@ export async function saveOnboardingToSupabase(
       last_seen_at: new Date().toISOString(),
     };
 
-    // Upsert: insert or update based on anon_user_id
     const { error } = await supabase
       .from('vibe_users')
       .upsert(userData, {
@@ -131,6 +160,97 @@ export async function saveOnboardingToSupabase(
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     console.error('Failed to save onboarding to Supabase:', errorMessage);
     return { success: false, error: errorMessage };
+  }
+}
+
+/**
+ * Save Onboarding 2.0 data to Supabase vibe_users table.
+ * Uses the new fields: mode, vibe_preferences, age_group, onboarding_complete
+ * 
+ * @param data - The collected onboarding 2.0 preferences
+ * @returns Promise<{ success: boolean; error?: string }>
+ */
+export async function saveOnboarding2ToSupabase(
+  data: OnboardingData2
+): Promise<{ success: boolean; error?: string }> {
+  if (!supabase) {
+    console.warn('Supabase not configured, skipping onboarding save');
+    return { success: true };
+  }
+
+  try {
+    const anonUserId = getAnonUserId();
+    
+    const userData = {
+      anon_user_id: anonUserId,
+      mode: data.mode,
+      vibe_preferences: data.vibe_preferences,
+      age_group: data.age_group,
+      onboarding_complete: data.onboarding_complete,
+      last_seen_at: new Date().toISOString(),
+    };
+
+    console.log('[saveOnboarding2] Saving data for user:', anonUserId);
+    console.log('[saveOnboarding2] Data:', userData);
+
+    const { error } = await supabase
+      .from('vibe_users')
+      .upsert(userData, {
+        onConflict: 'anon_user_id',
+      });
+
+    if (error) {
+      console.error('[saveOnboarding2] Supabase error:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log('[saveOnboarding2] Success!');
+    return { success: true };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[saveOnboarding2] Exception:', errorMessage);
+    return { success: false, error: errorMessage };
+  }
+}
+
+/**
+ * Check if user has completed onboarding.
+ * Checks both Supabase (onboarding_complete field) and localStorage fallback.
+ * 
+ * @returns Promise<boolean> - true if onboarding is complete
+ */
+export async function checkOnboardingComplete(): Promise<boolean> {
+  // First check localStorage (fallback/offline support)
+  const localComplete = localStorage.getItem('vibecheck_onboarding_complete') === 'true';
+  
+  if (!supabase) {
+    return localComplete;
+  }
+
+  try {
+    const anonUserId = getAnonUserId();
+    
+    const { data, error } = await supabase
+      .from('vibe_users')
+      .select('onboarding_complete')
+      .eq('anon_user_id', anonUserId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[checkOnboardingComplete] Error:', error);
+      return localComplete; // Fallback to localStorage
+    }
+
+    // If user exists in DB, use their status
+    if (data) {
+      return data.onboarding_complete === true;
+    }
+
+    // No user in DB - use localStorage
+    return localComplete;
+  } catch (err) {
+    console.error('[checkOnboardingComplete] Exception:', err);
+    return localComplete;
   }
 }
 
@@ -158,4 +278,3 @@ export async function updateLastSeen(): Promise<void> {
     console.error('Failed to update last_seen_at:', err);
   }
 }
-
