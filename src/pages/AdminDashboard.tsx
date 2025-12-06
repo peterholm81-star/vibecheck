@@ -90,7 +90,29 @@ function StatsCard({
 // VENUES REFRESH SECTION
 // ============================================
 
-function VenuesRefreshSection() {
+interface VenuesRefreshSectionProps {
+  adminPin: string;
+}
+
+interface BatchResult {
+  cityId: number;
+  cityName: string;
+  status: 'success' | 'error';
+  inserted?: number;
+  radiusKm?: number;
+  error?: string;
+}
+
+interface BatchResponse {
+  success: boolean;
+  totalCities: number;
+  successCount: number;
+  failedCount: number;
+  totalVenuesInserted: number;
+  results: BatchResult[];
+}
+
+function VenuesRefreshSection({ adminPin }: VenuesRefreshSectionProps) {
   const [cities, setCities] = useState<CityWithRadius[]>([]);
   const [selectedCityId, setSelectedCityId] = useState<number | null>(null);
   const [radiusKm, setRadiusKm] = useState<number>(10);
@@ -100,8 +122,16 @@ function VenuesRefreshSection() {
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Batch refresh state
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<string | null>(null);
+  const [batchResult, setBatchResult] = useState<BatchResponse | null>(null);
+
   // Get selected city for showing suggested radius
   const selectedCity = cities.find(c => c.id === selectedCityId);
+
+  // Check if any operation is running
+  const isAnyLoading = loading || batchLoading;
 
   useEffect(() => {
     (async () => {
@@ -137,12 +167,14 @@ function VenuesRefreshSection() {
     }
   };
 
+  // Single city refresh
   const handleRefresh = async () => {
     if (!selectedCityId) return;
 
     setLoading(true);
     setResultMessage(null);
     setErrorMessage(null);
+    setBatchResult(null);
 
     try {
       const data = await refreshVenuesForCity({
@@ -163,6 +195,58 @@ function VenuesRefreshSection() {
       setErrorMessage(errorMsg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Batch refresh all cities
+  const handleBatchRefresh = async () => {
+    setBatchLoading(true);
+    setBatchProgress(`Starter batch-oppdatering for ${cities.length} byer...`);
+    setResultMessage(null);
+    setErrorMessage(null);
+    setBatchResult(null);
+
+    try {
+      console.log('[VenuesRefreshSection] Starting batch refresh...');
+      
+      const response = await fetch('/api/admin-refresh-all-cities', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-pin': adminPin,
+        },
+        body: JSON.stringify({
+          includeCafeRestaurant,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      const data: BatchResponse = await response.json();
+      console.log('[VenuesRefreshSection] Batch complete:', data);
+      
+      setBatchResult(data);
+      setBatchProgress(null);
+
+      if (data.failedCount === 0) {
+        setResultMessage(
+          `✓ Batch fullført! Oppdaterte venues for alle ${data.successCount} byer. Totalt ${data.totalVenuesInserted} venues.`
+        );
+      } else {
+        setResultMessage(
+          `⚠️ Batch fullført med noen feil. ${data.successCount} byer OK, ${data.failedCount} feilet. Totalt ${data.totalVenuesInserted} venues. Se console for detaljer.`
+        );
+      }
+    } catch (error: unknown) {
+      console.error('[VenuesRefreshSection] Batch error:', error);
+      const errorMsg = error instanceof Error ? error.message : "Noe gikk galt under batch-refresh.";
+      setErrorMessage(errorMsg);
+      setBatchProgress(null);
+    } finally {
+      setBatchLoading(false);
     }
   };
 
@@ -248,36 +332,92 @@ function VenuesRefreshSection() {
               Inkluder cafe/restaurant i tillegg til bar/pub/nightclub
             </label>
 
-            {/* Button */}
-            <button
-              onClick={handleRefresh}
-              disabled={loading || !selectedCityId}
-              className="flex items-center gap-2 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-sm font-medium text-white transition-colors"
-            >
-              {loading ? (
-                <>
-                  <RefreshCw size={16} className="animate-spin" />
-                  Oppdaterer venues...
-                </>
-              ) : (
-                <>
-                  <Download size={16} />
-                  Refresh venues fra OpenStreetMap
-                </>
-              )}
-            </button>
+            {/* Buttons row */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              {/* Single city refresh button */}
+              <button
+                onClick={handleRefresh}
+                disabled={isAnyLoading || !selectedCityId}
+                className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-sm font-medium text-white transition-colors"
+              >
+                {loading ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" />
+                    Oppdaterer...
+                  </>
+                ) : (
+                  <>
+                    <Download size={16} />
+                    Refresh én by
+                  </>
+                )}
+              </button>
 
-            {/* Messages */}
+              {/* Batch refresh button */}
+              <button
+                onClick={handleBatchRefresh}
+                disabled={isAnyLoading || cities.length === 0}
+                className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-sm font-medium text-white transition-colors"
+              >
+                {batchLoading ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" />
+                    Batch kjører...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw size={16} />
+                    Oppdater alle byer ({cities.length})
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Batch info text */}
+            <p className="text-xs text-slate-500">
+              "Oppdater alle byer" kjører Overpass-oppdatering for alle {cities.length} norske byer. 
+              Tar 1-3 minutter avhengig av antall.
+            </p>
+
+            {/* Batch progress indicator */}
+            {batchProgress && (
+              <div className="p-4 bg-violet-900/20 border border-violet-800/50 rounded-xl flex items-center gap-3">
+                <RefreshCw size={18} className="text-violet-400 animate-spin flex-shrink-0" />
+                <p className="text-sm text-violet-300">{batchProgress}</p>
+              </div>
+            )}
+
+            {/* Success message */}
             {resultMessage && (
               <div className="p-4 bg-emerald-900/20 border border-emerald-800/50 rounded-xl">
                 <p className="text-sm text-emerald-400">{resultMessage}</p>
               </div>
             )}
+
+            {/* Error message */}
             {errorMessage && (
               <div className="p-4 bg-red-900/20 border border-red-800/50 rounded-xl flex items-center gap-3">
                 <AlertCircle size={18} className="text-red-400 flex-shrink-0" />
                 <p className="text-sm text-red-300">{errorMessage}</p>
               </div>
+            )}
+
+            {/* Batch result details */}
+            {batchResult && batchResult.failedCount > 0 && (
+              <details className="p-4 bg-amber-900/20 border border-amber-800/50 rounded-xl">
+                <summary className="text-sm text-amber-400 cursor-pointer">
+                  Vis detaljer for {batchResult.failedCount} feilede byer
+                </summary>
+                <ul className="mt-3 space-y-1 text-xs text-amber-300/80">
+                  {batchResult.results
+                    .filter(r => r.status === 'error')
+                    .map(r => (
+                      <li key={r.cityId}>
+                        • {r.cityName}: {r.error}
+                      </li>
+                    ))}
+                </ul>
+              </details>
             )}
           </>
         )}
@@ -486,7 +626,7 @@ function DashboardContent({ onBack, onLogout, adminPin }: DashboardContentProps)
             </div>
 
             {/* Venues Refresh Section */}
-            <VenuesRefreshSection />
+            <VenuesRefreshSection adminPin={adminPin} />
 
             {/* Footer */}
             <footer className="mt-16 pt-8 border-t border-neutral-800/50">

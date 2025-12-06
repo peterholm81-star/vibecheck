@@ -10,7 +10,11 @@ export type Gender = "male" | "female" | "other" | "prefer_not_to_say";
 
 export type AgeBand = "18_25" | "25_30" | "30_35" | "35_40" | "40_plus";
 
-export type FavoriteCity = "auto" | "Trondheim" | "Oslo" | "Bergen";
+/**
+ * Favorite city type - now supports any city name from the database
+ * "auto" means use GPS-based detection
+ */
+export type FavoriteCity = "auto" | string;
 
 /**
  * Orientation type for matching features
@@ -131,15 +135,9 @@ export const PROFILE_RELATIONSHIP_STATUS_OPTIONS: ProfileRelationshipStatus[] = 
   "prefer_not_to_say",
 ];
 
-// Favorite city options
-export const FAVORITE_CITY_OPTIONS: FavoriteCity[] = ["auto", "Trondheim", "Oslo", "Bergen"];
-
-export const FAVORITE_CITY_LABELS: Record<FavoriteCity, string> = {
-  auto: "Automatisk (geolocation)",
-  Trondheim: "Trondheim",
-  Oslo: "Oslo",
-  Bergen: "Bergen",
-};
+// NOTE: Favorite city options are now fetched dynamically from the cities table
+// The old hardcoded FAVORITE_CITY_OPTIONS and FAVORITE_CITY_LABELS have been removed.
+// See ProfileSettings.tsx for the new implementation.
 
 // ============================================
 // MAPPING FUNCTIONS (DB <-> TypeScript)

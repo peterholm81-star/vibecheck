@@ -8,8 +8,6 @@ import {
   ORIENTATION_LABELS,
   PROFILE_RELATIONSHIP_STATUS_OPTIONS,
   PROFILE_RELATIONSHIP_STATUS_LABELS,
-  FAVORITE_CITY_OPTIONS,
-  FAVORITE_CITY_LABELS,
 } from '../hooks/useProfile';
 import type {
   Gender,
@@ -25,6 +23,7 @@ import {
   INTENT_OPTIONS,
 } from '../types';
 import { getBirthYearOptions, getAgeBandFromBirthYear, getAgeBandLabel } from '../utils/age';
+import { getCities, City } from '../api/cities';
 
 // ============================================
 // PROFILE SETTINGS COMPONENT
@@ -63,6 +62,9 @@ export function ProfileSettings() {
   const [showSaved, setShowSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  
+  // Cities for favorite city dropdown
+  const [availableCities, setAvailableCities] = useState<City[]>([]);
   
   // Geolocation permission state (for smart check-in warning)
   const [geoPermission, setGeoPermission] = useState<'prompt' | 'granted' | 'denied' | 'unavailable'>('prompt');
@@ -124,6 +126,17 @@ export function ProfileSettings() {
     setDefaultIntent(localPrefs.defaultIntent);
     setFavoriteCity(localPrefs.favoriteCity);
   }, [localPrefs]);
+
+  // Fetch cities for favorite city dropdown
+  useEffect(() => {
+    getCities()
+      .then(cities => {
+        setAvailableCities(cities);
+      })
+      .catch(err => {
+        console.error('Failed to fetch cities for profile:', err);
+      });
+  }, []);
 
   // ============================================
   // HANDLERS
@@ -424,19 +437,22 @@ export function ProfileSettings() {
           <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-600">
             <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
               <MapPin size={16} className="text-violet-400" />
-              Favorittby
+              Favorittby (startby for kartet)
             </label>
             <select
               value={favoriteCity}
               onChange={(e) => setFavoriteCity(e.target.value as FavoriteCity)}
               className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
             >
-              {FAVORITE_CITY_OPTIONS.map((city) => (
-                <option key={city} value={city}>{FAVORITE_CITY_LABELS[city]}</option>
+              <option value="auto">Automatisk (GPS-basert)</option>
+              {availableCities.map((city) => (
+                <option key={city.id} value={city.name}>{city.name}</option>
               ))}
             </select>
             <p className="text-xs text-slate-500 mt-2">
-              Velg by for å overstyre automatisk geolocation
+              {favoriteCity === 'auto' 
+                ? 'Kartet vil bruke din GPS-posisjon for å finne nærmeste by'
+                : `Kartet starter alltid i ${favoriteCity}`}
             </p>
           </div>
 
