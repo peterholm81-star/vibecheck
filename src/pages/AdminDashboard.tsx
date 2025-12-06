@@ -2,14 +2,16 @@
  * Admin Dashboard
  * 
  * Admin panel showing user statistics and venues management.
- * PIN authentication is handled by AdminApp.
+ * PIN authentication is handled by AdminApp, which passes the PIN
+ * for use in authenticated API calls.
  * Styled to match the existing Insights dark theme.
  */
 
-import { useState, useEffect } from 'react';
-import { ArrowLeft, Users, UserPlus, Activity, RefreshCw, AlertCircle, MapPin, Download } from 'lucide-react';
-import { getCities, City } from '../api/cities';
+import { useState, useEffect, useCallback } from 'react';
+import { ArrowLeft, Users, UserPlus, Activity, RefreshCw, AlertCircle, MapPin, Download, LogOut } from 'lucide-react';
+import { getCitiesWithRadius, CityWithRadius } from '../api/cities';
 import { refreshVenuesForCity } from '../api/venues';
+import { getCityRadius } from '../config/cityRadius';
 
 interface UserStats {
   totalUsers: number;
@@ -22,7 +24,6 @@ interface AdminStatsResponse {
   newUsers24h?: number;
   activeLast10m?: number;
   error?: string;
-  details?: string;
 }
 
 // ============================================
@@ -90,22 +91,27 @@ function StatsCard({
 // ============================================
 
 function VenuesRefreshSection() {
-  const [cities, setCities] = useState<City[]>([]);
+  const [cities, setCities] = useState<CityWithRadius[]>([]);
   const [selectedCityId, setSelectedCityId] = useState<number | null>(null);
-  const [radiusKm, setRadiusKm] = useState<number>(5);
+  const [radiusKm, setRadiusKm] = useState<number>(10);
   const [includeCafeRestaurant, setIncludeCafeRestaurant] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingCities, setLoadingCities] = useState(true);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Get selected city for showing suggested radius
+  const selectedCity = cities.find(c => c.id === selectedCityId);
+
   useEffect(() => {
     (async () => {
       try {
-        const list = await getCities();
+        const list = await getCitiesWithRadius();
         setCities(list);
         if (list.length > 0) {
           setSelectedCityId(list[0].id);
+          // Set initial radius to the first city's suggested radius
+          setRadiusKm(list[0].suggested_radius_km);
         }
       } catch (error) {
         console.error(error);
@@ -115,6 +121,15 @@ function VenuesRefreshSection() {
       }
     })();
   }, []);
+
+  // Update radius when city changes
+  const handleCityChange = (newCityId: number) => {
+    setSelectedCityId(newCityId);
+    const city = cities.find(c => c.id === newCityId);
+    if (city) {
+      setRadiusKm(city.suggested_radius_km);
+    }
+  };
 
   const handleRefresh = async () => {
     if (!selectedCityId) return;
@@ -134,7 +149,7 @@ function VenuesRefreshSection() {
       const cityName = data?.city?.name ?? "byen";
 
       setResultMessage(
-        `Oppdaterte venues for ${cityName}. Antall innsatte venues: ${inserted}.`
+        `✓ Oppdaterte venues for ${cityName} (radius ${radiusKm} km). Antall innsatte venues: ${inserted}.`
       );
     } catch (error: unknown) {
       console.error(error);
@@ -172,14 +187,19 @@ function VenuesRefreshSection() {
               <select
                 className="bg-[#1a1b2b] border border-neutral-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500/50 transition-colors"
                 value={selectedCityId ?? ""}
-                onChange={(e) => setSelectedCityId(Number(e.target.value))}
+                onChange={(e) => handleCityChange(Number(e.target.value))}
               >
                 {cities.map((city) => (
                   <option key={city.id} value={city.id}>
-                    {city.name} ({city.country_code})
+                    {city.name} ({city.country_code}) – anbefalt {city.suggested_radius_km} km
                   </option>
                 ))}
               </select>
+              {selectedCity && (
+                <p className="text-xs text-slate-500">
+                  Sentrum: {selectedCity.center_lat.toFixed(4)}, {selectedCity.center_lon.toFixed(4)}
+                </p>
+              )}
             </div>
 
             {/* Radius */}
@@ -187,14 +207,28 @@ function VenuesRefreshSection() {
               <label className="text-sm text-slate-400 font-medium">
                 Radius (km) rundt byens sentrum
               </label>
-              <input
-                type="number"
-                min={1}
-                max={30}
-                className="bg-[#1a1b2b] border border-neutral-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500/50 transition-colors w-32"
-                value={radiusKm}
-                onChange={(e) => setRadiusKm(Number(e.target.value))}
-              />
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  className="bg-[#1a1b2b] border border-neutral-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500/50 transition-colors w-32"
+                  value={radiusKm}
+                  onChange={(e) => setRadiusKm(Number(e.target.value))}
+                />
+                {selectedCity && radiusKm !== selectedCity.suggested_radius_km && (
+                  <button
+                    type="button"
+                    onClick={() => setRadiusKm(selectedCity.suggested_radius_km)}
+                    className="text-xs text-violet-400 hover:text-violet-300 underline"
+                  >
+                    Bruk anbefalt ({selectedCity.suggested_radius_km} km)
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-slate-500">
+                Maks 50 km. Større radius = flere venues, men tregere Overpass-spørring.
+              </p>
             </div>
 
             {/* Cafe/restaurant toggle */}
@@ -250,25 +284,45 @@ function VenuesRefreshSection() {
 // ADMIN DASHBOARD CONTENT
 // ============================================
 
-function DashboardContent({ onBack }: { onBack: () => void }) {
+interface DashboardContentProps {
+  onBack: () => void;
+  onLogout?: () => void;
+  adminPin: string;
+}
+
+function DashboardContent({ onBack, onLogout, adminPin }: DashboardContentProps) {
   const [stats, setStats] = useState<UserStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     console.log('[AdminDashboard] Fetching stats from /api/admin-stats...');
 
     try {
-      // Fetch stats from Edge Function API
-      const response = await fetch('/api/admin-stats');
+      // Fetch stats from Edge Function API with PIN header
+      const response = await fetch('/api/admin-stats', {
+        method: 'GET',
+        headers: {
+          'x-admin-pin': adminPin,
+        },
+      });
+
+      // Handle 401 Unauthorized
+      if (response.status === 401) {
+        setError('Ugyldig PIN. Vennligst logg inn på nytt.');
+        // Trigger logout if available
+        onLogout?.();
+        return;
+      }
+
       const data: AdminStatsResponse = await response.json();
 
       console.log('[AdminDashboard] API response:', data);
 
       // Check for API errors
       if (data.error) {
-        throw new Error(data.details || data.error);
+        throw new Error(data.error);
       }
 
       // Set stats from API response
@@ -289,7 +343,7 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  };
+  }, [adminPin, onLogout]);
 
   useEffect(() => {
     console.log('[AdminDashboard] Mounted, fetching stats...');
@@ -298,7 +352,7 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
     // Refresh every 30 seconds
     const interval = setInterval(fetchStats, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchStats]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -331,13 +385,25 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
             </div>
 
             {/* Right side */}
-            <button
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className="p-2.5 rounded-xl bg-[#1a1b2b] border border-neutral-800 text-slate-400 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-50"
-            >
-              <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="p-2.5 rounded-xl bg-[#1a1b2b] border border-neutral-800 text-slate-400 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-50"
+                title="Oppdater"
+              >
+                <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''} />
+              </button>
+              {onLogout && (
+                <button
+                  onClick={onLogout}
+                  className="p-2.5 rounded-xl bg-[#1a1b2b] border border-neutral-800 text-slate-400 hover:text-red-400 hover:border-red-500/30 transition-all"
+                  title="Logg ut"
+                >
+                  <LogOut size={18} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -439,17 +505,16 @@ function DashboardContent({ onBack }: { onBack: () => void }) {
 
 // ============================================
 // MAIN ADMIN DASHBOARD COMPONENT
-// PIN authentication is now handled by AdminApp
 // ============================================
 
 interface AdminDashboardProps {
   onBack: () => void;
+  onLogout?: () => void;
+  adminPin: string;
 }
 
-export function AdminDashboard({ onBack }: AdminDashboardProps) {
-  // Render dashboard content directly - PIN is handled by AdminApp
-  return <DashboardContent onBack={onBack} />;
+export function AdminDashboard({ onBack, onLogout, adminPin }: AdminDashboardProps) {
+  return <DashboardContent onBack={onBack} onLogout={onLogout} adminPin={adminPin} />;
 }
 
 export default AdminDashboard;
-

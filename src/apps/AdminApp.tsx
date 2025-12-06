@@ -4,30 +4,34 @@ import { AdminDashboard } from '../pages/AdminDashboard';
 
 // ============================================
 // ADMIN APP - PIN-protected admin dashboard
+// PIN is validated server-side via /api/admin-stats
 // ============================================
 
-const ADMIN_PIN = '9281';
-const ADMIN_AUTH_KEY = 'vibecheck_admin_authed';
+const ADMIN_PIN_KEY = 'vibecheck_admin_pin';
 
 interface PinGateProps {
-  onSuccess: () => void;
+  onSuccess: (pin: string) => void;
+  isValidating: boolean;
+  validationError: string | null;
 }
 
-function AdminPinGate({ onSuccess }: PinGateProps) {
+function AdminPinGate({ onSuccess, isValidating, validationError }: PinGateProps) {
   const [pin, setPin] = useState('');
-  const [error, setError] = useState(false);
   const [shake, setShake] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (pin === ADMIN_PIN) {
-      localStorage.setItem(ADMIN_AUTH_KEY, 'true');
-      onSuccess();
-    } else {
-      setError(true);
+  // Trigger shake animation when validation error changes
+  useEffect(() => {
+    if (validationError) {
       setShake(true);
       setTimeout(() => setShake(false), 500);
       setPin('');
+    }
+  }, [validationError]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pin.length === 4 && !isValidating) {
+      onSuccess(pin);
     }
   };
 
@@ -69,11 +73,11 @@ function AdminPinGate({ onSuccess }: PinGateProps) {
                 value={pin}
                 onChange={(e) => {
                   setPin(e.target.value.replace(/\D/g, ''));
-                  setError(false);
                 }}
                 placeholder="••••"
-                className={`w-full pl-12 pr-4 py-4 bg-slate-900/50 border rounded-xl text-center text-2xl tracking-[0.5em] font-mono text-white placeholder-slate-600 focus:outline-none focus:ring-2 transition-all ${
-                  error
+                disabled={isValidating}
+                className={`w-full pl-12 pr-4 py-4 bg-slate-900/50 border rounded-xl text-center text-2xl tracking-[0.5em] font-mono text-white placeholder-slate-600 focus:outline-none focus:ring-2 transition-all disabled:opacity-50 ${
+                  validationError
                     ? 'border-red-500 focus:ring-red-500/50'
                     : 'border-slate-600 focus:ring-violet-500/50 focus:border-violet-500'
                 }`}
@@ -81,16 +85,23 @@ function AdminPinGate({ onSuccess }: PinGateProps) {
               />
             </div>
 
-            {error && (
-              <p className="text-red-400 text-sm text-center mt-3">Feil PIN. Prøv igjen.</p>
+            {validationError && (
+              <p className="text-red-400 text-sm text-center mt-3">{validationError}</p>
             )}
 
             <button
               type="submit"
-              disabled={pin.length !== 4}
-              className="w-full mt-6 py-4 bg-violet-600 hover:bg-violet-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all"
+              disabled={pin.length !== 4 || isValidating}
+              className="w-full mt-6 py-4 bg-violet-600 hover:bg-violet-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2"
             >
-              Logg inn
+              {isValidating ? (
+                <>
+                  <RefreshCw size={18} className="animate-spin" />
+                  Verifiserer...
+                </>
+              ) : (
+                'Logg inn'
+              )}
             </button>
           </form>
         </div>
@@ -111,13 +122,64 @@ function AdminPinGate({ onSuccess }: PinGateProps) {
 }
 
 export function AdminApp() {
-  const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
+  // null = loading, '' = not authenticated, string = authenticated with PIN
+  const [adminPin, setAdminPin] = useState<string | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Check localStorage on mount
+  // Check localStorage for saved PIN on mount
   useEffect(() => {
-    const authed = localStorage.getItem(ADMIN_AUTH_KEY) === 'true';
-    setIsAuthed(authed);
+    const savedPin = localStorage.getItem(ADMIN_PIN_KEY);
+    if (savedPin) {
+      // Try to validate the saved PIN
+      validatePin(savedPin);
+    } else {
+      // No saved PIN, show gate
+      setAdminPin('');
+    }
   }, []);
+
+  // Validate PIN by making a request to /api/admin-stats
+  const validatePin = async (pin: string) => {
+    setIsValidating(true);
+    setValidationError(null);
+
+    try {
+      const response = await fetch('/api/admin-stats', {
+        method: 'GET',
+        headers: {
+          'x-admin-pin': pin,
+        },
+      });
+
+      if (response.status === 401) {
+        // Wrong PIN
+        setValidationError('Feil PIN. Prøv igjen.');
+        localStorage.removeItem(ADMIN_PIN_KEY);
+        setAdminPin('');
+      } else if (response.ok) {
+        // PIN is valid - save it and unlock
+        localStorage.setItem(ADMIN_PIN_KEY, pin);
+        setAdminPin(pin);
+      } else {
+        // Other error (500, etc.)
+        const data = await response.json().catch(() => ({}));
+        setValidationError(data.error || 'Serverfeil. Prøv igjen senere.');
+        setAdminPin('');
+      }
+    } catch (err) {
+      console.error('[AdminApp] Validation error:', err);
+      setValidationError('Kunne ikke koble til serveren.');
+      setAdminPin('');
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  // Handler for PIN submission from gate
+  const handlePinSubmit = (pin: string) => {
+    validatePin(pin);
+  };
 
   // Handler for leaving admin
   const handleBack = () => {
@@ -125,8 +187,15 @@ export function AdminApp() {
     window.location.reload();
   };
 
-  // Show loading while checking auth
-  if (isAuthed === null) {
+  // Handler for logout (clear saved PIN)
+  const handleLogout = () => {
+    localStorage.removeItem(ADMIN_PIN_KEY);
+    setAdminPin('');
+    setValidationError(null);
+  };
+
+  // Show loading while checking saved PIN
+  if (adminPin === null) {
     return (
       <div className="min-h-screen bg-[#0f0f17] flex items-center justify-center">
         <RefreshCw size={32} className="text-violet-400 animate-spin" />
@@ -134,24 +203,25 @@ export function AdminApp() {
     );
   }
 
-  // Show PIN gate if not authed
-  if (!isAuthed) {
-    return <AdminPinGate onSuccess={() => setIsAuthed(true)} />;
+  // Show PIN gate if not authenticated
+  if (!adminPin) {
+    return (
+      <AdminPinGate
+        onSuccess={handlePinSubmit}
+        isValidating={isValidating}
+        validationError={validationError}
+      />
+    );
   }
 
-  // Show admin dashboard (without the internal PIN gate)
-  return <AdminDashboardContent onBack={handleBack} />;
-}
-
-// We need a version of AdminDashboard without its own PIN gate
-// For now, we'll use the existing one which has its own PIN gate
-// This will be double-gated, but we can fix that later
-function AdminDashboardContent({ onBack }: { onBack: () => void }) {
-  // Import the actual dashboard content
-  // For now, just render the full AdminDashboard which has its own PIN
-  // We'll need to refactor AdminDashboard to export the content separately
-  return <AdminDashboard onBack={onBack} />;
+  // Show admin dashboard with PIN for API calls
+  return (
+    <AdminDashboard
+      onBack={handleBack}
+      onLogout={handleLogout}
+      adminPin={adminPin}
+    />
+  );
 }
 
 export default AdminApp;
-

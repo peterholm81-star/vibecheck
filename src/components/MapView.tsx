@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import DOMPurify from 'dompurify';
 import type { Venue, CheckIn, TimeWindow, HeatmapMode, Intent, VenueCategory } from '../types';
 import type { AgeBand } from '../hooks/useProfile';
 import { generateHeatmapData } from '../mocks/venues';
@@ -10,7 +11,8 @@ import { useVenueHeatmap, getHeatmapColor, getHeatmapGlow, HEATMAP_MODE_COLORS, 
 import { useNotificationSession, type NotificationSessionFilters } from '../hooks/useNotificationSession';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { updateLastSeen } from '../lib/vibeUsers';
-import { useCityVenues, VenuePoint } from '../hooks/useCityVenues';
+import { useCityVenues, VenuePoint, CityStatus } from '../hooks/useCityVenues';
+import { getCityRadius } from '../config/cityRadius';
 import {
   MAPBOX_TOKEN,
   MAP_STYLE,
@@ -206,19 +208,28 @@ export function MapView({
     }
   }, []);
 
+  // Calculate appropriate radius for the city
+  const cityRadiusKm = effectiveCityName ? getCityRadius(effectiveCityName) : 10;
+
   // Fetch venues from Edge Function based on city
   const {
     venues: edgeFunctionVenues,
     loading: venuesLoading,
     error: venuesError,
     cityId: resolvedCityId,
+    cityStatus,
+    detectedCityName,
+    usingFallback,
+    cityName: resolvedCityName,
   } = useCityVenues({
     cityName: effectiveCityName,
     userLat: userPosition?.lat ?? DEFAULT_CENTER[1],
     userLon: userPosition?.lon ?? DEFAULT_CENTER[0],
-    radiusKm: 10,
+    radiusKm: cityRadiusKm,
     nightlifeOnly: true,
     enabled: !!userPosition && !!effectiveCityName,
+    useNearestCity: true,
+    useFallback: true,
   });
 
   // Convert edge function venues to the Venue type expected by the rest of the component
@@ -472,18 +483,22 @@ export function MapView({
       // Build popup content with stats
       const statsHtml = buildPopupStats(heatmapData, count);
 
-      // Create popup
+      // Build popup HTML and sanitize to prevent XSS
+      const popupHtml = `
+        <div class="venue-popup">
+          <div class="venue-popup-name">${venue.name ?? ''}</div>
+          <div class="venue-popup-address">${venue.address ?? ''}</div>
+          ${statsHtml}
+        </div>
+      `;
+      const sanitizedPopupHtml = DOMPurify.sanitize(popupHtml);
+
+      // Create popup with sanitized HTML
       const popup = new mapboxgl.Popup({
         offset: 25,
         closeButton: false,
         closeOnClick: false,
-      }).setHTML(`
-        <div class="venue-popup">
-          <div class="venue-popup-name">${venue.name}</div>
-          <div class="venue-popup-address">${venue.address}</div>
-          ${statsHtml}
-        </div>
-      `);
+      }).setHTML(sanitizedPopupHtml);
 
       // Create marker
       const marker = new mapboxgl.Marker({ element: el })
@@ -567,6 +582,29 @@ export function MapView({
         <div className="absolute top-16 left-1/2 transform -translate-x-1/2 z-20">
           <div className="bg-red-900/80 backdrop-blur-sm px-4 py-2 rounded-full border border-red-700/50">
             <span className="text-xs text-red-200">{venuesError}</span>
+          </div>
+        </div>
+      )}
+
+      {/* City not supported banner - shows when using fallback city */}
+      {usingFallback && detectedCityName && resolvedCityName && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-30 max-w-sm mx-4">
+          <div className="bg-amber-900/90 backdrop-blur-sm px-4 py-3 rounded-xl border border-amber-700/50 shadow-lg">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 mt-0.5">
+                <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-amber-200">
+                  VibeCheck er ikke lansert i {detectedCityName} ennå
+                </p>
+                <p className="text-xs text-amber-300/80 mt-1">
+                  Kartet viser {resolvedCityName} som eksempel. Vi jobber med å utvide til flere byer!
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}
