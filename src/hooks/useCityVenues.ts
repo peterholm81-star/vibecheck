@@ -52,6 +52,8 @@ type UseCityVenuesResult = {
   // The resolved city name (may differ from input if fallback was used)
   cityName: string | null;
   cityId: number | null;
+  // City center coordinates (for map centering)
+  cityCenter: { lat: number; lon: number } | null;
   // Status of city resolution
   cityStatus: CityStatus;
   // The original city name detected (before any fallback)
@@ -115,6 +117,7 @@ export function useCityVenues(options: UseCityVenuesOptions): UseCityVenuesResul
   const [error, setError] = useState<string | null>(null);
   const [cityName, setCityName] = useState<string | null>(null);
   const [resolvedCityId, setResolvedCityId] = useState<number | null>(providedCityId ?? null);
+  const [cityCenter, setCityCenter] = useState<{ lat: number; lon: number } | null>(null);
   const [cityStatus, setCityStatus] = useState<CityStatus>('loading');
   const [detectedCityName, setDetectedCityName] = useState<string | null>(providedCityName ?? null);
   const [usingFallback, setUsingFallback] = useState(false);
@@ -150,6 +153,7 @@ export function useCityVenues(options: UseCityVenuesOptions): UseCityVenuesResul
         if (city) {
           setResolvedCityId(city.id);
           setCityName(city.name);
+          setCityCenter({ lat: city.center_lat, lon: city.center_lon });
           setCityStatus('found');
           setUsingFallback(false);
           return;
@@ -162,6 +166,7 @@ export function useCityVenues(options: UseCityVenuesOptions): UseCityVenuesResul
             console.log(`City "${providedCityName}" not found, using nearest: ${nearest.name}`);
             setResolvedCityId(nearest.id);
             setCityName(nearest.name);
+            setCityCenter({ lat: nearest.center_lat, lon: nearest.center_lon });
             setCityStatus('found');
             setUsingFallback(false);
             return;
@@ -175,6 +180,7 @@ export function useCityVenues(options: UseCityVenuesOptions): UseCityVenuesResul
             console.log(`City "${providedCityName}" not supported, using fallback: ${DEFAULT_FALLBACK_CITY}`);
             setResolvedCityId(fallbackCity.id);
             setCityName(fallbackCity.name);
+            setCityCenter({ lat: fallbackCity.center_lat, lon: fallbackCity.center_lon });
             setCityStatus('not_supported');
             setUsingFallback(true);
             return;
@@ -264,6 +270,7 @@ export function useCityVenues(options: UseCityVenuesOptions): UseCityVenuesResul
     error, 
     cityName, 
     cityId: resolvedCityId,
+    cityCenter,
     cityStatus,
     detectedCityName,
     usingFallback,

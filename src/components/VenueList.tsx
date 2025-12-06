@@ -92,6 +92,15 @@ export function VenueList({
     useFallback: true,
   });
   
+  // DEBUG: Log city resolution
+  useEffect(() => {
+    console.log("[VenueList] effectiveCityName:", effectiveCityName);
+    console.log("[VenueList] resolvedCityId:", resolvedCityId);
+    console.log("[VenueList] resolvedCityName:", resolvedCityName);
+    console.log("[VenueList] cityVenues count:", cityVenues.length);
+    console.log("[VenueList] localPrefs.favoriteCity:", localPrefs.favoriteCity);
+  }, [effectiveCityName, resolvedCityId, resolvedCityName, cityVenues.length, localPrefs.favoriteCity]);
+  
   // Convert VenuePoint[] to Venue[] format
   const convertedCityVenues: Venue[] = useMemo(() => {
     return cityVenues.map((v: VenuePoint) => ({
@@ -105,13 +114,12 @@ export function VenueList({
     }));
   }, [cityVenues]);
   
-  // Use city-specific venues if available, otherwise fall back to props
+  // IMPORTANT: Always use city-specific venues - NEVER fall back to global propsVenues!
+  // This ensures VenueList only shows venues for the active city.
   const venues = useMemo(() => {
-    if (resolvedCityId && convertedCityVenues.length > 0) {
-      return convertedCityVenues;
-    }
-    return propsVenues;
-  }, [resolvedCityId, convertedCityVenues, propsVenues]);
+    // Always use city venues (even if empty), never fall back to props
+    return convertedCityVenues;
+  }, [convertedCityVenues]);
   
   // Filter venues by search query
   const searchFilteredVenues = useMemo(() => {

@@ -217,6 +217,7 @@ export function MapView({
     loading: venuesLoading,
     error: venuesError,
     cityId: resolvedCityId,
+    cityCenter,
     cityStatus,
     detectedCityName,
     usingFallback,
@@ -231,6 +232,26 @@ export function MapView({
     useNearestCity: true,
     useFallback: true,
   });
+  
+  // DEBUG: Log city resolution
+  useEffect(() => {
+    console.log("[MapView] localPrefs.favoriteCity:", localPrefs.favoriteCity);
+    console.log("[MapView] effectiveCityName:", effectiveCityName);
+    console.log("[MapView] resolvedCityName:", resolvedCityName);
+    console.log("[MapView] cityCenter:", cityCenter);
+  }, [localPrefs.favoriteCity, effectiveCityName, resolvedCityName, cityCenter]);
+  
+  // Fly map to city center when city changes
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !cityCenter) return;
+    
+    console.log("[MapView] Flying to city center:", cityCenter);
+    map.current.flyTo({
+      center: [cityCenter.lon, cityCenter.lat],
+      zoom: 13,
+      duration: 1500,
+    });
+  }, [mapLoaded, cityCenter]);
 
   // Convert edge function venues to the Venue type expected by the rest of the component
   const convertedEdgeVenues: Venue[] = useMemo(() => {
