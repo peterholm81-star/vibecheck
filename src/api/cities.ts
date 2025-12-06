@@ -23,16 +23,19 @@ export type CityWithRadius = City & {
  * Henter alle byer fra cities-tabellen, sortert etter navn.
  */
 export async function getCities(): Promise<City[]> {
+  console.log('[getCities] Fetching cities from Supabase...');
+  
   const { data, error } = await supabase
     .from("cities")
     .select("id, name, country_code, center_lat, center_lon")
     .order("name", { ascending: true });
 
   if (error) {
-    console.error("getCities error", error);
-    throw error;
+    console.error("[getCities] Supabase error:", error.message, error.code, error.details);
+    throw new Error(`Supabase error: ${error.message} (${error.code})`);
   }
 
+  console.log('[getCities] Success, received', data?.length ?? 0, 'cities');
   return data ?? [];
 }
 

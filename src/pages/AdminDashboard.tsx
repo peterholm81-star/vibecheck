@@ -106,16 +106,22 @@ function VenuesRefreshSection() {
   useEffect(() => {
     (async () => {
       try {
+        console.log('[VenuesRefreshSection] Fetching cities...');
         const list = await getCitiesWithRadius();
+        console.log('[VenuesRefreshSection] Received cities:', list.length, list);
         setCities(list);
         if (list.length > 0) {
           setSelectedCityId(list[0].id);
           // Set initial radius to the first city's suggested radius
           setRadiusKm(list[0].suggested_radius_km);
+        } else {
+          console.warn('[VenuesRefreshSection] No cities returned from getCitiesWithRadius');
+          setErrorMessage("Ingen byer funnet. Sjekk at cities-tabellen er seeded og har RLS-policy.");
         }
       } catch (error) {
-        console.error(error);
-        setErrorMessage("Kunne ikke hente byliste.");
+        console.error('[VenuesRefreshSection] Error fetching cities:', error);
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        setErrorMessage(`Kunne ikke hente byliste: ${errorMsg}`);
       } finally {
         setLoadingCities(false);
       }
