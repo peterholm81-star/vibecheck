@@ -122,8 +122,16 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
     setIsSaving(true);
     setError(null);
 
+    // Alltid lagre til localStorage først (fungerer alltid)
+    localStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
+    localStorage.setItem('vibecheck_onboarding_data', JSON.stringify({
+      mode,
+      vibe_preferences: selectedVibes,
+      age_group: ageGroup,
+    }));
+
     try {
-      // Save to Supabase
+      // Prøv å lagre til Supabase
       const result = await saveOnboarding2ToSupabase({
         mode,
         vibe_preferences: selectedVibes,
@@ -132,26 +140,22 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
       });
 
       if (!result.success) {
-        console.error('[Onboarding] Save failed:', result.error);
-        setError('Kunne ikke lagre preferansene. Prøv igjen.');
-        setIsSaving(false);
-        return;
+        // Supabase feilet, men localStorage er lagret
+        console.error('[Onboarding] Supabase-lagring feilet:', result.error);
+        console.warn('[Onboarding] Fortsetter likevel - data er lagret lokalt');
+        // Ikke blokker brukeren - la dem fortsette med lokal lagring
+      } else {
+        console.log('[Onboarding] ✅ Alt lagret vellykket!');
       }
-
-      // Save to localStorage as fallback
-      localStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
-      localStorage.setItem('vibecheck_onboarding_data', JSON.stringify({
-        mode,
-        vibe_preferences: selectedVibes,
-        age_group: ageGroup,
-      }));
 
       setIsSaving(false);
       onComplete();
     } catch (err) {
-      console.error('[Onboarding] Exception:', err);
-      setError('Noe gikk galt. Prøv igjen.');
+      // Selv ved exception, la brukeren fortsette
+      console.error('[Onboarding] Exception under lagring:', err);
+      console.warn('[Onboarding] Fortsetter likevel - data er lagret lokalt');
       setIsSaving(false);
+      onComplete();
     }
   };
 

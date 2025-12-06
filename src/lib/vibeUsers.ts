@@ -167,6 +167,12 @@ export async function saveOnboardingToSupabase(
  * Save Onboarding 2.0 data to Supabase vibe_users table.
  * Uses the new fields: mode, vibe_preferences, age_group, onboarding_complete
  * 
+ * Strategy:
+ * 1. First try UPSERT (insert or update on conflict)
+ * 2. If that fails, try INSERT
+ * 3. If INSERT fails with conflict, try UPDATE
+ * 4. Return detailed error info for debugging
+ * 
  * @param data - The collected onboarding 2.0 preferences
  * @returns Promise<{ success: boolean; error?: string }>
  */
@@ -174,41 +180,106 @@ export async function saveOnboarding2ToSupabase(
   data: OnboardingData2
 ): Promise<{ success: boolean; error?: string }> {
   if (!supabase) {
-    console.warn('Supabase not configured, skipping onboarding save');
+    console.warn('[Onboarding] Supabase ikke konfigurert, hopper over lagring');
     return { success: true };
   }
 
+  const anonUserId = getAnonUserId();
+  
+  const userData = {
+    anon_user_id: anonUserId,
+    mode: data.mode,
+    vibe_preferences: data.vibe_preferences,
+    age_group: data.age_group,
+    onboarding_complete: data.onboarding_complete,
+    last_seen_at: new Date().toISOString(),
+  };
+
+  console.log('[Onboarding] Lagrer data for bruker:', anonUserId);
+  console.log('[Onboarding] Data som sendes:', userData);
+
   try {
-    const anonUserId = getAnonUserId();
-    
-    const userData = {
-      anon_user_id: anonUserId,
-      mode: data.mode,
-      vibe_preferences: data.vibe_preferences,
-      age_group: data.age_group,
-      onboarding_complete: data.onboarding_complete,
-      last_seen_at: new Date().toISOString(),
-    };
-
-    console.log('[saveOnboarding2] Saving data for user:', anonUserId);
-    console.log('[saveOnboarding2] Data:', userData);
-
-    const { error } = await supabase
+    // Strategi 1: Prøv UPSERT først (mest vanlig)
+    const { error: upsertError } = await supabase
       .from('vibe_users')
       .upsert(userData, {
         onConflict: 'anon_user_id',
       });
 
-    if (error) {
-      console.error('[saveOnboarding2] Supabase error:', error);
-      return { success: false, error: error.message };
+    if (!upsertError) {
+      console.log('[Onboarding] ✅ Upsert vellykket!');
+      return { success: true };
     }
 
-    console.log('[saveOnboarding2] Success!');
-    return { success: true };
+    console.warn('[Onboarding] Upsert feilet, prøver INSERT:', upsertError.message);
+
+    // Strategi 2: Prøv INSERT (kanskje brukeren ikke eksisterer ennå)
+    const { error: insertError } = await supabase
+      .from('vibe_users')
+      .insert(userData);
+
+    if (!insertError) {
+      console.log('[Onboarding] ✅ Insert vellykket!');
+      return { success: true };
+    }
+
+    // Sjekk om det er en duplikat-feil (brukeren finnes allerede)
+    if (insertError.code === '23505' || insertError.message.includes('duplicate')) {
+      console.warn('[Onboarding] Bruker finnes allerede, prøver UPDATE:', insertError.message);
+
+      // Strategi 3: Prøv UPDATE
+      const { error: updateError } = await supabase
+        .from('vibe_users')
+        .update({
+          mode: data.mode,
+          vibe_preferences: data.vibe_preferences,
+          age_group: data.age_group,
+          onboarding_complete: data.onboarding_complete,
+          last_seen_at: new Date().toISOString(),
+        })
+        .eq('anon_user_id', anonUserId);
+
+      if (!updateError) {
+        console.log('[Onboarding] ✅ Update vellykket!');
+        return { success: true };
+      }
+
+      console.error('[Onboarding] ❌ Alle metoder feilet. Update-feil:', updateError);
+      console.error('[Onboarding] Feilkode:', updateError.code);
+      console.error('[Onboarding] Feilmelding:', updateError.message);
+      console.error('[Onboarding] Hint:', updateError.hint || 'Ingen hint');
+      console.error('[Onboarding] Detaljer:', updateError.details || 'Ingen detaljer');
+      
+      return { 
+        success: false, 
+        error: `Kunne ikke oppdatere bruker (${updateError.code}): ${updateError.message}` 
+      };
+    }
+
+    // INSERT feilet av annen grunn
+    console.error('[Onboarding] ❌ Insert feilet (ikke duplikat):', insertError);
+    console.error('[Onboarding] Feilkode:', insertError.code);
+    console.error('[Onboarding] Feilmelding:', insertError.message);
+    console.error('[Onboarding] Hint:', insertError.hint || 'Ingen hint');
+    console.error('[Onboarding] Detaljer:', insertError.details || 'Ingen detaljer');
+    
+    // Spesialhåndtering for RLS-feil
+    if (insertError.code === '42501' || insertError.message.includes('policy')) {
+      console.error('[Onboarding] 🔒 RLS POLICY FEIL: Tabellen mangler sannsynligvis INSERT-policy for anonymous users');
+      return { 
+        success: false, 
+        error: 'Tilgangsfeil (RLS). Kontakt administrator.' 
+      };
+    }
+    
+    return { 
+      success: false, 
+      error: `Lagring feilet (${insertError.code}): ${insertError.message}` 
+    };
+
   } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[saveOnboarding2] Exception:', errorMessage);
+    const errorMessage = err instanceof Error ? err.message : 'Ukjent feil';
+    console.error('[Onboarding] ❌ Exception under lagring:', err);
     return { success: false, error: errorMessage };
   }
 }
