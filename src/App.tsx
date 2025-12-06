@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Map, List, PlusCircle, RefreshCw, AlertCircle, User, Heart, Activity, Users, Sparkles, BarChart3, Search } from 'lucide-react';
+import { Map, List, PlusCircle, RefreshCw, AlertCircle, User, Heart, Activity, Users, Sparkles, Search } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import { LoginPage } from './pages/LoginPage';
-import { InsightsDashboard } from './pages/InsightsDashboard';
-import { AdminDashboard } from './pages/AdminDashboard';
+import { AdminApp } from './apps/AdminApp';
+import { InsightsApp } from './apps/InsightsApp';
 import { getVenues, getRecentCheckIns } from './api';
 import { MapView } from './components/MapView';
 import { VenueList } from './components/VenueList';
@@ -28,7 +28,7 @@ import { createCheckIn, checkInWithExternalPlace } from './lib/checkIns';
 // TYPES
 // ============================================
 
-type Tab = 'map' | 'venues' | 'checkin' | 'profile' | 'insights';
+type Tab = 'map' | 'venues' | 'checkin' | 'profile';
 
 interface MainAppState {
   venues: Venue[];
@@ -413,7 +413,6 @@ function MainApp({ userId }: MainAppProps) {
     { id: 'venues', label: 'Venues', icon: <List size={18} /> },
     { id: 'checkin', label: 'Check-in', icon: <PlusCircle size={18} /> },
     { id: 'profile', label: 'Profil', icon: <User size={18} /> },
-    { id: 'insights', label: 'Insights', icon: <BarChart3 size={18} /> },
   ];
 
   // Get selected venue
@@ -527,17 +526,8 @@ function MainApp({ userId }: MainAppProps) {
 
       case 'profile':
         return <ProfileSettings />;
-
-      case 'insights':
-        // Insights renders its own full-page layout
-        return null;
     }
   };
-
-  // If insights tab is active, render its full-page layout
-  if (activeTab === 'insights') {
-    return <InsightsDashboard onBack={() => setActiveTab('map')} />;
-  }
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col overflow-x-hidden">
@@ -847,6 +837,13 @@ function isAdminRoute(): boolean {
   return window.location.pathname === '/admin';
 }
 
+/**
+ * Check if current URL is the insights route
+ */
+function isInsightsRoute(): boolean {
+  return window.location.pathname === '/insights';
+}
+
 function App() {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -856,6 +853,9 @@ function App() {
   
   // Admin route state
   const [showAdmin, setShowAdmin] = useState(isAdminRoute());
+  
+  // Insights route state
+  const [showInsights, setShowInsights] = useState(isInsightsRoute());
 
   // Sjekk localStorage for onboarding-status ved oppstart
   useEffect(() => {
@@ -863,20 +863,15 @@ function App() {
     setHasOnboarded(onboarded);
   }, []);
 
-  // Handle browser back/forward for admin route
+  // Handle browser back/forward for admin and insights routes
   useEffect(() => {
     const handlePopState = () => {
       setShowAdmin(isAdminRoute());
+      setShowInsights(isInsightsRoute());
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
-
-  // Handler for leaving admin
-  const handleAdminBack = () => {
-    window.history.pushState({}, '', '/');
-    setShowAdmin(false);
-  };
 
   // Håndter fullført onboarding
   const handleOnboardingComplete = () => {
@@ -916,8 +911,15 @@ function App() {
   }, []);
 
   // Show admin dashboard if on /admin route
+  // AdminApp handles PIN authentication and passes it to AdminDashboard
   if (showAdmin) {
-    return <AdminDashboard onBack={handleAdminBack} />;
+    return <AdminApp />;
+  }
+
+  // Show insights dashboard if on /insights route
+  // InsightsApp handles PIN authentication via server-side validation
+  if (showInsights) {
+    return <InsightsApp />;
   }
 
   // Vent på at vi har sjekket onboarding-status
