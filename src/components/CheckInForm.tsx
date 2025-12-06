@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { MapPin, Send, CheckCircle, AlertCircle } from 'lucide-react';
-import type { Venue, VibeScore, Intent, RelationshipStatus, OnsIntent } from '../types';
+import { useState, useEffect, useMemo } from 'react';
+import { MapPin, Send, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import type { Venue, VibeScore, Intent, RelationshipStatus, OnsIntent, VenueCategory } from '../types';
 import {
   VIBE_SCORE_LABELS,
   INTENT_LABELS,
@@ -9,6 +9,10 @@ import {
   ONS_INTENT_LABELS,
 } from '../types';
 import { useProfile, type ProfileRelationshipStatus } from '../hooks/useProfile';
+import { useCityVenues, VenuePoint } from '../hooks/useCityVenues';
+import { useCityName } from '../hooks/useCityName';
+import { getCityRadius } from '../config/cityRadius';
+import { DEFAULT_CENTER } from '../config/map';
 
 // ============================================
 // HELPER: Map profile relationship status to check-in relationship status
@@ -45,7 +49,7 @@ type FormState = 'idle' | 'submitting' | 'success' | 'error';
 
 const VIBE_OPTIONS: VibeScore[] = ['hot', 'good', 'ok', 'quiet'];
 
-export function CheckInForm({ venues, selectedVenueId, onSubmit }: CheckInFormProps) {
+export function CheckInForm({ venues: propsVenues, selectedVenueId, onSubmit }: CheckInFormProps) {
   const { profile, localPrefs, isLoading } = useProfile();
   
   const [venueId, setVenueId] = useState(selectedVenueId || '');
@@ -56,6 +60,45 @@ export function CheckInForm({ venues, selectedVenueId, onSubmit }: CheckInFormPr
   const [formState, setFormState] = useState<FormState>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [defaultsApplied, setDefaultsApplied] = useState(false);
+  
+  // ============================================
+  // CITY-FILTERED VENUES (same logic as VenueList and MapView)
+  // ============================================
+  const gpsBasedCityName = useCityName();
+  const effectiveCityName = localPrefs.favoriteCity !== 'auto' ? localPrefs.favoriteCity : gpsBasedCityName;
+  const cityRadiusKm = effectiveCityName ? getCityRadius(effectiveCityName) : 10;
+  
+  const {
+    venues: cityVenues,
+    loading: venuesLoading,
+    cityName: resolvedCityName,
+  } = useCityVenues({
+    cityName: effectiveCityName,
+    userLat: DEFAULT_CENTER[1],
+    userLon: DEFAULT_CENTER[0],
+    radiusKm: cityRadiusKm,
+    nightlifeOnly: true,
+    enabled: !!effectiveCityName,
+    useNearestCity: true,
+    useFallback: true,
+  });
+  
+  // Convert VenuePoint[] to Venue[] format for dropdown
+  const cityFilteredVenues: Venue[] = useMemo(() => {
+    return cityVenues.map((v: VenuePoint) => ({
+      id: v.id,
+      name: v.name,
+      address: '',
+      latitude: v.lat,
+      longitude: v.lon,
+      category: (v.category as VenueCategory) || 'bar',
+      createdAt: new Date().toISOString(),
+    }));
+  }, [cityVenues]);
+  
+  // Use city-filtered venues if available, otherwise fall back to props (for compatibility)
+  const venues = cityFilteredVenues.length > 0 ? cityFilteredVenues : propsVenues;
+  const displayCityName = resolvedCityName || effectiveCityName || 'byen';
 
   // Sync venueId state when selectedVenueId prop changes (e.g., navigating from venue details)
   useEffect(() => {
@@ -147,26 +190,33 @@ export function CheckInForm({ venues, selectedVenueId, onSubmit }: CheckInFormPr
         <p className="text-slate-400 text-sm mb-5 sm:mb-6">Share the vibe at your current spot</p>
 
         <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-5">
-          {/* Venue Selection */}
+          {/* Venue Selection - uses city-filtered venues */}
           <div>
             <label htmlFor="venue" className="block text-sm sm:text-sm font-medium text-slate-300 mb-2">
               <MapPin size={16} className="inline mr-1.5 -mt-0.5" />
-              Where are you?
+              Hvor er du? <span className="text-slate-500 font-normal">({displayCityName})</span>
             </label>
-            <select
-              id="venue"
-              value={venueId}
-              onChange={(e) => setVenueId(e.target.value)}
-              disabled={formState === 'submitting'}
-              className="w-full px-4 py-3.5 sm:py-3 bg-slate-700 border border-slate-600 rounded-xl sm:rounded-lg text-base sm:text-sm text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 disabled:opacity-50 disabled:cursor-not-allowed appearance-none"
-            >
-              <option value="">Select a venue</option>
-              {venues.map((venue) => (
-                <option key={venue.id} value={venue.id}>
-                  {venue.name}
-                </option>
-              ))}
-            </select>
+            {venuesLoading && cityFilteredVenues.length === 0 ? (
+              <div className="w-full px-4 py-3.5 sm:py-3 bg-slate-700 border border-slate-600 rounded-xl sm:rounded-lg text-base sm:text-sm text-slate-400 flex items-center gap-2">
+                <Loader2 size={16} className="animate-spin" />
+                Laster utesteder i {displayCityName}...
+              </div>
+            ) : (
+              <select
+                id="venue"
+                value={venueId}
+                onChange={(e) => setVenueId(e.target.value)}
+                disabled={formState === 'submitting'}
+                className="w-full px-4 py-3.5 sm:py-3 bg-slate-700 border border-slate-600 rounded-xl sm:rounded-lg text-base sm:text-sm text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 disabled:opacity-50 disabled:cursor-not-allowed appearance-none"
+              >
+                <option value="">Velg et utested ({venues.length} i {displayCityName})</option>
+                {venues.map((venue) => (
+                  <option key={venue.id} value={venue.id}>
+                    {venue.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Vibe Score Selection */}

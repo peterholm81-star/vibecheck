@@ -73,6 +73,7 @@ export function VenueList({
   }, []);
   
   // Fetch venues for the active city using the same hook as MapView
+  // Note: We use DEFAULT_CENTER as fallback so we don't need to wait for userPosition
   const {
     venues: cityVenues,
     loading: venuesLoading,
@@ -87,7 +88,8 @@ export function VenueList({
     userLon: userPosition?.lon ?? DEFAULT_CENTER[0],
     radiusKm: cityRadiusKm,
     nightlifeOnly: true,
-    enabled: !!userPosition && !!effectiveCityName,
+    // Don't require userPosition - we have DEFAULT_CENTER as fallback
+    enabled: !!effectiveCityName,
     useNearestCity: true,
     useFallback: true,
   });
