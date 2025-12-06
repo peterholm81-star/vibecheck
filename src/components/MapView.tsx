@@ -91,6 +91,34 @@ function getModeHeatmapColors(mode: HeatmapMode): mapboxgl.Expression {
         1, 'rgba(153, 27, 27, 1)',
       ] as mapboxgl.Expression;
     
+    // Heatmap 2.0: Party mode - vibrant yellow/gold gradient
+    case 'party':
+      return [
+        'interpolate',
+        ['linear'],
+        ['heatmap-density'],
+        0, 'rgba(0, 0, 0, 0)',
+        0.2, 'rgba(254, 240, 138, 0.4)',
+        0.4, 'rgba(253, 224, 71, 0.6)',
+        0.6, 'rgba(250, 204, 21, 0.8)',
+        0.8, 'rgba(234, 179, 8, 0.9)',
+        1, 'rgba(202, 138, 4, 1)',
+      ] as mapboxgl.Expression;
+    
+    // Heatmap 2.0: Chill mode - cool blue gradient
+    case 'chill':
+      return [
+        'interpolate',
+        ['linear'],
+        ['heatmap-density'],
+        0, 'rgba(0, 0, 0, 0)',
+        0.2, 'rgba(191, 219, 254, 0.4)',
+        0.4, 'rgba(147, 197, 253, 0.6)',
+        0.6, 'rgba(96, 165, 250, 0.8)',
+        0.8, 'rgba(59, 130, 246, 0.9)',
+        1, 'rgba(37, 99, 235, 1)',
+      ] as mapboxgl.Expression;
+    
     case 'activity':
     default:
       // Default multi-color gradient (cool to hot)
@@ -317,6 +345,12 @@ export function MapView({
           weight = Math.min(1, venue.onsRatio * 2);
         } else if (heatmapMode === 'ons_boost' && venue.onsRatio > 0.3) {
           weight = Math.min(1, venue.onsRatio * 2.5);
+        }
+        // Heatmap 2.0: Party and Chill modes use partyRatio and chillRatio from venue_stats_recent
+        else if (heatmapMode === 'party' && venue.partyRatio > 0.2) {
+          weight = Math.min(1, venue.partyRatio * 2);
+        } else if (heatmapMode === 'chill' && venue.chillRatio > 0.2) {
+          weight = Math.min(1, venue.chillRatio * 2);
         }
         
         return {

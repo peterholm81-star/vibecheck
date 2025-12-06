@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Activity, Heart, Zap, Sparkles, Users, ChevronDown, X, Search } from 'lucide-react';
+import { Activity, Heart, Zap, Sparkles, Users, ChevronDown, X, Search, PartyPopper, Coffee } from 'lucide-react';
 import type { Intent, HeatmapMode } from '../types';
 import { INTENT_LABELS, INTENT_OPTIONS } from '../types';
 import type { AgeBand } from '../hooks/useProfile';
@@ -19,27 +19,36 @@ import { AGE_BAND_LABELS } from '../utils/venueStats';
 const AGE_BANDS_ORDER: AgeBand[] = ['18_25', '25_30', '30_35', '35_40', '40_plus'];
 
 // Mode labels for display (Norwegian) - using 👉👌 for ONS
+// Heatmap 2.0: Added party and chill modes
 const MODE_LABELS: Record<HeatmapMode, string> = {
   activity: 'Aktivitet',
   single: 'Single',
   ons: '👉👌 ONS',
   ons_boost: '👉👌 ONS Boost',
+  party: 'Party',
+  chill: 'Chill',
 };
 
 // Mode icons (emojis for ONS modes)
+// Heatmap 2.0: Added party and chill icons
 const MODE_ICONS: Record<HeatmapMode, React.ReactNode> = {
   activity: <Activity size={14} />,
   single: <Heart size={14} />,
   ons: <span className="text-sm">👉👌</span>,
   ons_boost: <Zap size={14} />,
+  party: <PartyPopper size={14} />,
+  chill: <Coffee size={14} />,
 };
 
 // Mode colors for active state
+// Heatmap 2.0: Added party (yellow) and chill (blue) colors
 const MODE_COLORS: Record<HeatmapMode, string> = {
   activity: 'bg-violet-500/20 text-violet-300 border-violet-500',
   single: 'bg-pink-500/20 text-pink-300 border-pink-500',
   ons: 'bg-orange-500/20 text-orange-300 border-orange-500',
   ons_boost: 'bg-red-500/20 text-red-300 border-red-500',
+  party: 'bg-yellow-500/20 text-yellow-300 border-yellow-500',
+  chill: 'bg-blue-500/20 text-blue-300 border-blue-500',
 };
 
 type FilterPanel = 'mode' | 'intent' | 'age' | null;

@@ -162,7 +162,8 @@ export type TimeWindow = 60 | 120 | 180;
 // HEATMAP MODE TYPE
 // ============================================
 
-export type HeatmapMode = 'activity' | 'single' | 'ons' | 'ons_boost';
+// Heatmap 2.0: Added 'party' and 'chill' modes
+export type HeatmapMode = 'activity' | 'single' | 'ons' | 'ons_boost' | 'party' | 'chill';
 
 // ============================================
 // SORT MODE TYPE

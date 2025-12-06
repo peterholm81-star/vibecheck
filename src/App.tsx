@@ -663,6 +663,29 @@ function MainApp({ userId }: MainAppProps) {
                   <span className="text-sm">👉👌</span>
                   ONS Boost
                 </button>
+                {/* Heatmap 2.0: Party and Chill modes */}
+                <button
+                  onClick={() => setHeatmapMode('party')}
+                  className={`min-h-[36px] px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 active:scale-95 ${
+                    heatmapMode === 'party'
+                      ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500'
+                      : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
+                  }`}
+                >
+                  <span className="text-sm">🎉</span>
+                  Party
+                </button>
+                <button
+                  onClick={() => setHeatmapMode('chill')}
+                  className={`min-h-[36px] px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 active:scale-95 ${
+                    heatmapMode === 'chill'
+                      ? 'bg-blue-500/20 text-blue-300 border border-blue-500'
+                      : 'bg-slate-700 text-slate-400 border border-slate-600 hover:border-slate-500'
+                  }`}
+                >
+                  <span className="text-sm">😌</span>
+                  Chill
+                </button>
               </div>
               
               {/* Singles Filter Toggle */}
