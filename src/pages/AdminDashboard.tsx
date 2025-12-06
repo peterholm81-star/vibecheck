@@ -8,10 +8,19 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Users, UserPlus, Activity, RefreshCw, AlertCircle, MapPin, Download, LogOut } from 'lucide-react';
+import { ArrowLeft, Users, UserPlus, Activity, RefreshCw, AlertCircle, MapPin, Download, LogOut, CheckCircle, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import { getCitiesWithRadius, CityWithRadius } from '../api/cities';
 import { refreshVenuesForCity } from '../api/venues';
 import { getCityRadius } from '../config/cityRadius';
+import {
+  mapSingleCityError,
+  mapBatchResultToUi,
+  mapBatchApiError,
+  type MappedError,
+  type BatchResultSummary,
+  type BatchApiResponse,
+  type ErrorSeverity,
+} from '../utils/adminErrorMapper';
 
 interface UserStats {
   totalUsers: number;
@@ -94,22 +103,12 @@ interface VenuesRefreshSectionProps {
   adminPin: string;
 }
 
-interface BatchResult {
-  cityId: number;
-  cityName: string;
-  status: 'success' | 'error';
-  inserted?: number;
-  radiusKm?: number;
-  error?: string;
-}
+// Message severity type for UI styling
+type MessageSeverity = 'success' | 'warning' | 'error';
 
-interface BatchResponse {
-  success: boolean;
-  totalCities: number;
-  successCount: number;
-  failedCount: number;
-  totalVenuesInserted: number;
-  results: BatchResult[];
+interface StatusMessage {
+  text: string;
+  severity: MessageSeverity;
 }
 
 function VenuesRefreshSection({ adminPin }: VenuesRefreshSectionProps) {
@@ -119,13 +118,15 @@ function VenuesRefreshSection({ adminPin }: VenuesRefreshSectionProps) {
   const [includeCafeRestaurant, setIncludeCafeRestaurant] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingCities, setLoadingCities] = useState(true);
-  const [resultMessage, setResultMessage] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  
+  // Unified status message (replaces separate resultMessage/errorMessage)
+  const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
 
   // Batch refresh state
   const [batchLoading, setBatchLoading] = useState(false);
   const [batchProgress, setBatchProgress] = useState<string | null>(null);
-  const [batchResult, setBatchResult] = useState<BatchResponse | null>(null);
+  const [batchSummary, setBatchSummary] = useState<BatchResultSummary | null>(null);
+  const [showBatchDetails, setShowBatchDetails] = useState(false);
 
   // Get selected city for showing suggested radius
   const selectedCity = cities.find(c => c.id === selectedCityId);
@@ -171,12 +172,16 @@ function VenuesRefreshSection({ adminPin }: VenuesRefreshSectionProps) {
   const handleRefresh = async () => {
     if (!selectedCityId) return;
 
+    const cityName = selectedCity?.name ?? 'byen';
+    
     setLoading(true);
-    setResultMessage(null);
-    setErrorMessage(null);
-    setBatchResult(null);
+    setStatusMessage(null);
+    setBatchSummary(null);
+    setShowBatchDetails(false);
 
     try {
+      console.log('[Admin/RefreshCity] Starting refresh for:', { cityId: selectedCityId, cityName, radiusKm });
+      
       const data = await refreshVenuesForCity({
         cityId: selectedCityId,
         radiusKm,
@@ -184,15 +189,22 @@ function VenuesRefreshSection({ adminPin }: VenuesRefreshSectionProps) {
       });
 
       const inserted = data?.inserted ?? 0;
-      const cityName = data?.city?.name ?? "byen";
+      const responseCityName = data?.city?.name ?? cityName;
 
-      setResultMessage(
-        `✓ Oppdaterte venues for ${cityName} (radius ${radiusKm} km). Antall innsatte venues: ${inserted}.`
-      );
+      console.log('[Admin/RefreshCity] Success:', { cityName: responseCityName, inserted, radiusKm });
+      
+      setStatusMessage({
+        text: `✓ Oppdaterte venues for ${responseCityName} (radius ${radiusKm} km). ${inserted} venues hentet fra OpenStreetMap.`,
+        severity: 'success',
+      });
     } catch (error: unknown) {
-      console.error(error);
-      const errorMsg = error instanceof Error ? error.message : "Noe gikk galt under refresh.";
-      setErrorMessage(errorMsg);
+      // Use the error mapper to get a user-friendly message
+      const mappedError = mapSingleCityError(error, cityName);
+      
+      setStatusMessage({
+        text: mappedError.uiMessage,
+        severity: mappedError.severity === 'warning' ? 'warning' : 'error',
+      });
     } finally {
       setLoading(false);
     }
@@ -202,12 +214,12 @@ function VenuesRefreshSection({ adminPin }: VenuesRefreshSectionProps) {
   const handleBatchRefresh = async () => {
     setBatchLoading(true);
     setBatchProgress(`Starter batch-oppdatering for ${cities.length} byer...`);
-    setResultMessage(null);
-    setErrorMessage(null);
-    setBatchResult(null);
+    setStatusMessage(null);
+    setBatchSummary(null);
+    setShowBatchDetails(false);
 
     try {
-      console.log('[VenuesRefreshSection] Starting batch refresh...');
+      console.log('[Admin/BatchRefresh] Starting batch refresh for', cities.length, 'cities');
       
       const response = await fetch('/api/admin-refresh-all-cities', {
         method: 'POST',
@@ -220,30 +232,48 @@ function VenuesRefreshSection({ adminPin }: VenuesRefreshSectionProps) {
         }),
       });
 
+      // Handle HTTP errors
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        const mappedError = mapBatchApiError(
+          errorData.error || `HTTP ${response.status}`,
+          response.status
+        );
+        
+        setStatusMessage({
+          text: mappedError.uiMessage,
+          severity: 'error',
+        });
+        setBatchProgress(null);
+        return;
       }
 
-      const data: BatchResponse = await response.json();
-      console.log('[VenuesRefreshSection] Batch complete:', data);
+      const data: BatchApiResponse = await response.json();
       
-      setBatchResult(data);
+      // Use the mapper to get a nice summary
+      const summary = mapBatchResultToUi(data);
+      
+      setBatchSummary(summary);
       setBatchProgress(null);
-
-      if (data.failedCount === 0) {
-        setResultMessage(
-          `✓ Batch fullført! Oppdaterte venues for alle ${data.successCount} byer. Totalt ${data.totalVenuesInserted} venues.`
-        );
-      } else {
-        setResultMessage(
-          `⚠️ Batch fullført med noen feil. ${data.successCount} byer OK, ${data.failedCount} feilet. Totalt ${data.totalVenuesInserted} venues. Se console for detaljer.`
-        );
+      
+      // Set status message based on summary
+      setStatusMessage({
+        text: summary.summaryMessage,
+        severity: summary.severity === 'info' ? 'success' : summary.severity === 'warning' ? 'warning' : 'error',
+      });
+      
+      // Auto-expand details if there were failures
+      if (summary.failedCount > 0) {
+        setShowBatchDetails(true);
       }
     } catch (error: unknown) {
-      console.error('[VenuesRefreshSection] Batch error:', error);
-      const errorMsg = error instanceof Error ? error.message : "Noe gikk galt under batch-refresh.";
-      setErrorMessage(errorMsg);
+      // Network error or other unexpected error
+      const mappedError = mapBatchApiError(error);
+      
+      setStatusMessage({
+        text: mappedError.uiMessage,
+        severity: 'error',
+      });
       setBatchProgress(null);
     } finally {
       setBatchLoading(false);
@@ -387,37 +417,95 @@ function VenuesRefreshSection({ adminPin }: VenuesRefreshSectionProps) {
               </div>
             )}
 
-            {/* Success message */}
-            {resultMessage && (
-              <div className="p-4 bg-emerald-900/20 border border-emerald-800/50 rounded-xl">
-                <p className="text-sm text-emerald-400">{resultMessage}</p>
+            {/* Unified status message */}
+            {statusMessage && (
+              <div className={`p-4 rounded-xl flex items-start gap-3 ${
+                statusMessage.severity === 'success'
+                  ? 'bg-emerald-900/20 border border-emerald-800/50'
+                  : statusMessage.severity === 'warning'
+                  ? 'bg-amber-900/20 border border-amber-800/50'
+                  : 'bg-red-900/20 border border-red-800/50'
+              }`}>
+                {statusMessage.severity === 'success' ? (
+                  <CheckCircle size={18} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+                ) : statusMessage.severity === 'warning' ? (
+                  <AlertTriangle size={18} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle size={18} className="text-red-400 flex-shrink-0 mt-0.5" />
+                )}
+                <p className={`text-sm ${
+                  statusMessage.severity === 'success'
+                    ? 'text-emerald-400'
+                    : statusMessage.severity === 'warning'
+                    ? 'text-amber-400'
+                    : 'text-red-300'
+                }`}>
+                  {statusMessage.text}
+                </p>
               </div>
             )}
 
-            {/* Error message */}
-            {errorMessage && (
-              <div className="p-4 bg-red-900/20 border border-red-800/50 rounded-xl flex items-center gap-3">
-                <AlertCircle size={18} className="text-red-400 flex-shrink-0" />
-                <p className="text-sm text-red-300">{errorMessage}</p>
+            {/* Batch result details (expandable) */}
+            {batchSummary && (batchSummary.failedCount > 0 || batchSummary.successCount > 0) && (
+              <div className="border border-neutral-700/50 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowBatchDetails(!showBatchDetails)}
+                  className="w-full p-4 bg-[#1a1b2b] flex items-center justify-between text-left hover:bg-[#1e1f30] transition-colors"
+                >
+                  <span className="text-sm text-slate-300">
+                    {showBatchDetails ? 'Skjul' : 'Vis'} detaljer ({batchSummary.successCount} OK, {batchSummary.failedCount} feilet)
+                  </span>
+                  {showBatchDetails ? (
+                    <ChevronUp size={16} className="text-slate-400" />
+                  ) : (
+                    <ChevronDown size={16} className="text-slate-400" />
+                  )}
+                </button>
+                
+                {showBatchDetails && (
+                  <div className="p-4 bg-[#0f0f17] border-t border-neutral-700/50">
+                    {/* Failed cities */}
+                    {batchSummary.failedCount > 0 && (
+                      <div className="mb-4">
+                        <p className="text-xs font-medium text-red-400 mb-2 uppercase tracking-wider">
+                          Feilede byer ({batchSummary.failedCount})
+                        </p>
+                        <div className="space-y-2">
+                          {batchSummary.failedCities.map((city, idx) => (
+                            <div key={idx} className="flex items-start gap-2 text-sm">
+                              <AlertCircle size={14} className="text-red-400 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <span className="text-slate-300 font-medium">{city.cityName}:</span>
+                                <span className="text-red-300/80 ml-1">{city.errorMessage}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Successful cities */}
+                    {batchSummary.successCount > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-emerald-400 mb-2 uppercase tracking-wider">
+                          Vellykkede byer ({batchSummary.successCount})
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {batchSummary.successCities.map((city, idx) => (
+                            <div key={idx} className="flex items-center gap-2 text-sm">
+                              <CheckCircle size={12} className="text-emerald-400 flex-shrink-0" />
+                              <span className="text-slate-400">
+                                {city.cityName} <span className="text-slate-500">({city.venuesInserted})</span>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
-
-            {/* Batch result details */}
-            {batchResult && batchResult.failedCount > 0 && (
-              <details className="p-4 bg-amber-900/20 border border-amber-800/50 rounded-xl">
-                <summary className="text-sm text-amber-400 cursor-pointer">
-                  Vis detaljer for {batchResult.failedCount} feilede byer
-                </summary>
-                <ul className="mt-3 space-y-1 text-xs text-amber-300/80">
-                  {batchResult.results
-                    .filter(r => r.status === 'error')
-                    .map(r => (
-                      <li key={r.cityId}>
-                        • {r.cityName}: {r.error}
-                      </li>
-                    ))}
-                </ul>
-              </details>
             )}
           </>
         )}

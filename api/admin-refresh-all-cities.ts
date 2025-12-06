@@ -62,6 +62,31 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Detect error code from error message for structured error handling
+ */
+function detectErrorCode(message: string): string {
+  const lowerMessage = message.toLowerCase();
+  
+  if (lowerMessage.includes('timeout') || lowerMessage.includes('504')) {
+    return 'OVERPASS_TIMEOUT';
+  }
+  if (lowerMessage.includes('rate limit') || lowerMessage.includes('429') || lowerMessage.includes('too many')) {
+    return 'OVERPASS_RATE_LIMIT';
+  }
+  if (lowerMessage.includes('502') || lowerMessage.includes('503') || lowerMessage.includes('bad gateway')) {
+    return 'OVERPASS_UNAVAILABLE';
+  }
+  if (lowerMessage.includes('database') || lowerMessage.includes('insert') || lowerMessage.includes('supabase')) {
+    return 'SUPABASE_ERROR';
+  }
+  if (lowerMessage.includes('network') || lowerMessage.includes('fetch')) {
+    return 'NETWORK_ERROR';
+  }
+  
+  return 'UNKNOWN';
+}
+
 interface CityResult {
   cityId: number;
   cityName: string;
@@ -69,6 +94,7 @@ interface CityResult {
   inserted?: number;
   radiusKm?: number;
   error?: string;
+  errorCode?: string; // For structured error mapping
 }
 
 export default async function handler(req: Request): Promise<Response> {
@@ -164,13 +190,17 @@ export default async function handler(req: Request): Promise<Response> {
         });
 
         if (error) {
-          console.error(`[admin-refresh-all-cities] Error for ${city.name}:`, error);
+          const errorMessage = error.message || 'Unknown error';
+          const errorCode = detectErrorCode(errorMessage);
+          
+          console.error(`[admin-refresh-all-cities] Error for ${city.name}:`, { errorCode, errorMessage });
           results.push({
             cityId: city.id,
             cityName: city.name,
             status: 'error',
             radiusKm,
-            error: error.message || 'Unknown error',
+            error: errorMessage,
+            errorCode,
           });
           failedCount++;
         } else {
@@ -187,13 +217,16 @@ export default async function handler(req: Request): Promise<Response> {
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-        console.error(`[admin-refresh-all-cities] Exception for ${city.name}:`, err);
+        const errorCode = detectErrorCode(errorMessage);
+        
+        console.error(`[admin-refresh-all-cities] Exception for ${city.name}:`, { errorCode, errorMessage, err });
         results.push({
           cityId: city.id,
           cityName: city.name,
           status: 'error',
           radiusKm,
           error: errorMessage,
+          errorCode,
         });
         failedCount++;
       }
