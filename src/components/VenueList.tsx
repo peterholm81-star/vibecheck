@@ -141,27 +141,29 @@ export function VenueList({
     return filtered;
   }, [propsVenues, cityCenter, cityRadiusKm, effectiveCityName]);
   
-  // Use city-specific venues if available, fall back to geo-filtered props otherwise
+  // ALLTID bruk geo-filtrert fallback som primær kilde
+  // Dette sikrer at ALLE venues innenfor radius vises (inkl. google_places med city_id: NULL)
+  // Edge Function filtrerer på city_id, som ekskluderer google_places-venues
   const venues = useMemo(() => {
-    // 1) Hvis vi har by-filtrerte venues fra useCityVenues, bruk dem
-    if (convertedCityVenues.length > 0) {
-      console.log('[Venues] Bruker', convertedCityVenues.length, 'venues fra API for', effectiveCityName);
-      return convertedCityVenues;
-    }
-
-    // 2) Hvis vi fortsatt laster, bruk geografisk filtrert fallback
-    if (venuesLoading) {
-      console.log('[Venues] Laster... fallback til', fallbackCityVenues.length, 'geo-filtrerte venues');
+    // Hvis vi har geo-filtrerte venues, bruk dem (inkluderer alle sources)
+    if (fallbackCityVenues.length > 0) {
+      console.log('[Venues] Bruker', fallbackCityVenues.length, 'geo-filtrerte venues for', effectiveCityName);
       return fallbackCityVenues;
     }
 
-    // 3) Etter lasting – bruk geografisk filtrert fallback (ikke global liste)
-    console.log('[Venues] Ingen city-venues, fallback til', fallbackCityVenues.length, 'geo-filtrerte venues');
-    return fallbackCityVenues;
-  }, [convertedCityVenues, fallbackCityVenues, venuesLoading, effectiveCityName]);
+    // Hvis vi laster og ikke har geo-data ennå, bruk API-resultater midlertidig
+    if (venuesLoading && convertedCityVenues.length > 0) {
+      console.log('[Venues] Laster geo... midlertidig API-venues:', convertedCityVenues.length);
+      return convertedCityVenues;
+    }
+
+    // Siste fallback: propsVenues (uten geo-filter)
+    console.log('[Venues] Ingen geo-data, bruker propsVenues:', propsVenues.length);
+    return propsVenues;
+  }, [fallbackCityVenues, convertedCityVenues, propsVenues, venuesLoading, effectiveCityName]);
 
   // Debug logging for sammenligning med CheckIn
-  console.log('[Venues fanen]', effectiveCityName, 'propsVenues:', propsVenues.length, 'cityVenues:', convertedCityVenues.length, 'vises:', venues.length);
+  console.log('[Venues fanen]', effectiveCityName, 'geo:', fallbackCityVenues.length, 'api:', convertedCityVenues.length, 'vises:', venues.length);
   
   // Filter venues by search query
   const searchFilteredVenues = useMemo(() => {

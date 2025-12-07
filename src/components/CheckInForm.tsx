@@ -119,23 +119,28 @@ export function CheckInForm({ venues: propsVenues, selectedVenueId, onSubmit }: 
     return filtered;
   }, [propsVenues, cityCenter, cityRadiusKm]);
   
-  // Use city-filtered venues when available, fall back to geo-filtered props
+  // ALLTID bruk geo-filtrert fallback som primær kilde (samme som VenueList)
+  // Dette sikrer at ALLE venues innenfor radius vises (inkl. google_places med city_id: NULL)
+  // Edge Function filtrerer på city_id, som ekskluderer google_places-venues
   const venues = useMemo(() => {
-    if (cityFilteredVenues.length > 0) {
-      return cityFilteredVenues;
-    }
-    // During loading, use geo-filtered fallback
-    if (venuesLoading) {
+    // Hvis vi har geo-filtrerte venues, bruk dem (inkluderer alle sources)
+    if (fallbackCityVenues.length > 0) {
       return fallbackCityVenues;
     }
-    // After loading, if still empty, use geo-filtered fallback (not global list)
-    return fallbackCityVenues;
-  }, [cityFilteredVenues, fallbackCityVenues, venuesLoading]);
+
+    // Hvis vi laster og ikke har geo-data ennå, bruk API-resultater midlertidig
+    if (venuesLoading && cityFilteredVenues.length > 0) {
+      return cityFilteredVenues;
+    }
+
+    // Siste fallback: propsVenues (uten geo-filter)
+    return propsVenues;
+  }, [fallbackCityVenues, cityFilteredVenues, propsVenues, venuesLoading]);
   
   const displayCityName = resolvedCityName || effectiveCityName || 'byen';
   
   // Debug logging for sammenligning med Venues-fanen
-  console.log('[Check-in]', effectiveCityName, 'propsVenues:', propsVenues.length, 'cityVenues:', cityFilteredVenues.length, 'vises:', venues.length);
+  console.log('[Check-in]', effectiveCityName, 'geo:', fallbackCityVenues.length, 'api:', cityFilteredVenues.length, 'vises:', venues.length);
 
   // Sync venueId state when selectedVenueId prop changes (e.g., navigating from venue details)
   useEffect(() => {
