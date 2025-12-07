@@ -17,6 +17,7 @@ import { useCityVenues, VenuePoint } from '../hooks/useCityVenues';
 import { useCityName } from '../hooks/useCityName';
 import { getCityRadius } from '../config/cityRadius';
 import { DEFAULT_CENTER } from '../config/map';
+import { calculateDistanceMeters } from '../utils/geo';
 
 interface VenueListProps {
   venues: Venue[]; // Legacy prop, used as fallback
@@ -80,6 +81,7 @@ export function VenueList({
     error: venuesError,
     cityId: resolvedCityId,
     cityName: resolvedCityName,
+    cityCenter,
     usingFallback,
     detectedCityName,
   } = useCityVenues({
@@ -115,8 +117,31 @@ export function VenueList({
       createdAt: new Date().toISOString(),
     }));
   }, [cityVenues]);
+
+  // Filtrer propsVenues til aktiv by ved hjelp av geografisk avstand fra bysentrum
+  // Dette brukes som fallback når useCityVenues ikke har data
+  const fallbackCityVenues = useMemo(() => {
+    // Hvis vi ikke har bysentrum-koordinater, kan vi ikke filtrere geografisk
+    if (!cityCenter) {
+      console.log('[Venues] Ingen cityCenter, kan ikke filtrere fallback geografisk');
+      return propsVenues;
+    }
+
+    const radiusMeters = cityRadiusKm * 1000;
+    const filtered = propsVenues.filter((venue) => {
+      if (venue.latitude == null || venue.longitude == null) return false;
+      const distance = calculateDistanceMeters(
+        { lat: cityCenter.lat, lng: cityCenter.lon },
+        { lat: venue.latitude, lng: venue.longitude }
+      );
+      return distance <= radiusMeters;
+    });
+
+    console.log('[Venues] fallbackCityVenues:', filtered.length, 'av', propsVenues.length, 'innenfor', cityRadiusKm, 'km fra', effectiveCityName);
+    return filtered;
+  }, [propsVenues, cityCenter, cityRadiusKm, effectiveCityName]);
   
-  // Use city-specific venues if available, fall back to props otherwise
+  // Use city-specific venues if available, fall back to geo-filtered props otherwise
   const venues = useMemo(() => {
     // 1) Hvis vi har by-filtrerte venues fra useCityVenues, bruk dem
     if (convertedCityVenues.length > 0) {
@@ -124,17 +149,16 @@ export function VenueList({
       return convertedCityVenues;
     }
 
-    // 2) Hvis vi fortsatt laster, bruk propsVenues som midlertidig fallback
+    // 2) Hvis vi fortsatt laster, bruk geografisk filtrert fallback
     if (venuesLoading) {
-      console.log('[Venues] Laster... midlertidig fallback til', propsVenues.length, 'props-venues');
-      return propsVenues;
+      console.log('[Venues] Laster... fallback til', fallbackCityVenues.length, 'geo-filtrerte venues');
+      return fallbackCityVenues;
     }
 
-    // 3) Etter lasting – hvis by-listen fortsatt er tom, bruk propsVenues
-    //    (bedre å vise noe enn "Ingen steder" hvis vi egentlig har venues)
-    console.log('[Venues] Ingen by-venues, fallback til', propsVenues.length, 'props-venues');
-    return propsVenues;
-  }, [convertedCityVenues, propsVenues, venuesLoading, effectiveCityName]);
+    // 3) Etter lasting – bruk geografisk filtrert fallback (ikke global liste)
+    console.log('[Venues] Ingen city-venues, fallback til', fallbackCityVenues.length, 'geo-filtrerte venues');
+    return fallbackCityVenues;
+  }, [convertedCityVenues, fallbackCityVenues, venuesLoading, effectiveCityName]);
   
   // Filter venues by search query
   const searchFilteredVenues = useMemo(() => {

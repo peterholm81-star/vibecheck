@@ -13,6 +13,7 @@ import { useCityVenues, VenuePoint } from '../hooks/useCityVenues';
 import { useCityName } from '../hooks/useCityName';
 import { getCityRadius } from '../config/cityRadius';
 import { DEFAULT_CENTER } from '../config/map';
+import { calculateDistanceMeters } from '../utils/geo';
 
 // ============================================
 // HELPER: Map profile relationship status to check-in relationship status
@@ -72,6 +73,7 @@ export function CheckInForm({ venues: propsVenues, selectedVenueId, onSubmit }: 
     venues: cityVenues,
     loading: venuesLoading,
     cityName: resolvedCityName,
+    cityCenter,
   } = useCityVenues({
     cityName: effectiveCityName,
     userLat: DEFAULT_CENTER[1],
@@ -95,19 +97,40 @@ export function CheckInForm({ venues: propsVenues, selectedVenueId, onSubmit }: 
       createdAt: new Date().toISOString(),
     }));
   }, [cityVenues]);
+
+  // Filtrer propsVenues til aktiv by ved hjelp av geografisk avstand fra bysentrum
+  // Dette brukes som fallback når useCityVenues ikke har data
+  const fallbackCityVenues = useMemo(() => {
+    // Hvis vi ikke har bysentrum-koordinater, kan vi ikke filtrere geografisk
+    if (!cityCenter) {
+      return propsVenues;
+    }
+
+    const radiusMeters = cityRadiusKm * 1000;
+    const filtered = propsVenues.filter((venue) => {
+      if (venue.latitude == null || venue.longitude == null) return false;
+      const distance = calculateDistanceMeters(
+        { lat: cityCenter.lat, lng: cityCenter.lon },
+        { lat: venue.latitude, lng: venue.longitude }
+      );
+      return distance <= radiusMeters;
+    });
+
+    return filtered;
+  }, [propsVenues, cityCenter, cityRadiusKm]);
   
-  // Use city-filtered venues when available, fall back to props during loading
+  // Use city-filtered venues when available, fall back to geo-filtered props
   const venues = useMemo(() => {
     if (cityFilteredVenues.length > 0) {
       return cityFilteredVenues;
     }
-    // During loading, use props as fallback
+    // During loading, use geo-filtered fallback
     if (venuesLoading) {
-      return propsVenues;
+      return fallbackCityVenues;
     }
-    // After loading, if still empty, use props (better than showing nothing)
-    return propsVenues;
-  }, [cityFilteredVenues, propsVenues, venuesLoading]);
+    // After loading, if still empty, use geo-filtered fallback (not global list)
+    return fallbackCityVenues;
+  }, [cityFilteredVenues, fallbackCityVenues, venuesLoading]);
   
   const displayCityName = resolvedCityName || effectiveCityName || 'byen';
   
