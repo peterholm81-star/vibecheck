@@ -18,7 +18,6 @@ import {
   MAP_STYLE,
   DEFAULT_CENTER,
   DEFAULT_ZOOM,
-  MARKER_ZOOM_THRESHOLD,
   HEATMAP_COLORS,
   HEATMAP_RADIUS,
   HEATMAP_INTENSITY,
@@ -38,6 +37,62 @@ import {
 
 // Set Mapbox access token
 mapboxgl.accessToken = MAPBOX_TOKEN;
+
+// ============================================
+// SMART MARKER SYSTEM: Zoom-basert markør-visning
+// ============================================
+
+/**
+ * Marker-modus basert på zoom-nivå:
+ * - 'none': Kun heatmap, ingen markører (oversiktsnivå)
+ * - 'recommended': Få utvalgte venues med høyest aktivitet
+ * - 'extended': Flere venues, men med hard cap
+ */
+type MarkerMode = 'none' | 'recommended' | 'extended';
+
+// Zoom-grenser for marker-moduser
+const ZOOM_THRESHOLD_RECOMMENDED = 12.5; // Under dette: ingen markører
+const ZOOM_THRESHOLD_EXTENDED = 14.5;    // Over dette: flere markører
+
+// Maksimalt antall markører per modus
+const MAX_MARKERS_RECOMMENDED = 8;
+const MAX_MARKERS_EXTENDED = 25;
+
+/**
+ * Beregn marker-modus fra zoom-nivå
+ */
+function getMarkerMode(zoom: number): MarkerMode {
+  if (zoom < ZOOM_THRESHOLD_RECOMMENDED) return 'none';
+  if (zoom < ZOOM_THRESHOLD_EXTENDED) return 'recommended';
+  return 'extended';
+}
+
+/**
+ * Velg hvilke venues som skal vises som markører basert på aktivitet og modus.
+ * Prioriterer venues med høyest aktivitet (totalCheckins fra heatmap).
+ */
+function selectMarkerVenues<T extends { id: string }>(
+  allVenues: T[],
+  heatmapMap: Map<string, HeatmapVenue>,
+  markerMode: MarkerMode
+): T[] {
+  if (markerMode === 'none') {
+    return [];
+  }
+
+  const maxCount = markerMode === 'recommended' ? MAX_MARKERS_RECOMMENDED : MAX_MARKERS_EXTENDED;
+
+  // Sorter venues etter aktivitet (totalCheckins fra heatmap, høyest først)
+  const sorted = [...allVenues].sort((a, b) => {
+    const aData = heatmapMap.get(a.id);
+    const bData = heatmapMap.get(b.id);
+    const aCheckins = aData?.totalCheckins ?? 0;
+    const bCheckins = bData?.totalCheckins ?? 0;
+    return bCheckins - aCheckins; // Descending
+  });
+
+  return sorted.slice(0, maxCount);
+}
 
 // ============================================
 // HEATMAP 2.0: Mode-based color schemes
@@ -305,6 +360,37 @@ export function MapView({
   // Heatmap 2.0: Use the new venue heatmap hook for real scores
   const { heatmapVenues, isLoading: heatmapLoading, refresh: refreshHeatmap } = useVenueHeatmap();
 
+  // ============================================
+  // SMART MARKER SYSTEM: Zoom-basert utvalg
+  // ============================================
+  
+  // Beregn marker-modus fra nåværende zoom
+  const markerMode = useMemo<MarkerMode>(() => {
+    return getMarkerMode(currentZoom);
+  }, [currentZoom]);
+
+  // Lag en Map for rask oppslag av heatmap-data per venue
+  const heatmapMap = useMemo(() => {
+    const map = new Map<string, HeatmapVenue>();
+    heatmapVenues.forEach(v => map.set(v.id, v));
+    return map;
+  }, [heatmapVenues]);
+
+  // Velg hvilke venues som skal vises som markører (basert på zoom og aktivitet)
+  const markerVenues = useMemo(() => {
+    return selectMarkerVenues(venues, heatmapMap, markerMode);
+  }, [venues, heatmapMap, markerMode]);
+
+  // Debug-logging for marker-systemet
+  useEffect(() => {
+    console.log('[MapView] Marker-modus', {
+      zoomLevel: currentZoom.toFixed(1),
+      markerMode,
+      totalVenues: venues.length,
+      markerCount: markerVenues.length,
+    });
+  }, [currentZoom, markerMode, venues.length, markerVenues.length]);
+
   // Update last_seen_at in vibe_users when map opens
   // This is a fire-and-forget operation
   useEffect(() => {
@@ -487,7 +573,7 @@ export function MapView({
   }, [mapLoaded, heatmapVenueGeoJSON, heatmapGeoJSON, heatmapMode]);
 
   // Add/remove venue markers based on zoom level
-  // Heatmap 2.0: Now uses heatmapVenues with mode-based colors
+  // SMART MARKER SYSTEM: Bruker markerVenues (zoom-basert utvalg) i stedet for alle venues
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
 
@@ -495,12 +581,8 @@ export function MapView({
     markersRef.current.forEach(marker => marker.remove());
     markersRef.current = [];
 
-    // Only show markers above threshold zoom
-    if (currentZoom < MARKER_ZOOM_THRESHOLD) return;
-
-    // Create a map of heatmap data for quick lookup
-    const heatmapMap = new Map<string, HeatmapVenue>();
-    heatmapVenues.forEach(v => heatmapMap.set(v.id, v));
+    // Smart marker system: Hvis markerMode er 'none', vis ingen markører
+    if (markerMode === 'none') return;
 
     // Calculate check-in counts per venue for the badge (legacy fallback)
     const venueCounts = new Map<string, number>();
@@ -508,8 +590,8 @@ export function MapView({
       venueCounts.set(c.venueId, (venueCounts.get(c.venueId) || 0) + 1);
     });
 
-    // Create markers for each venue
-    venues.forEach(venue => {
+    // Create markers kun for utvalgte venues (basert på zoom og aktivitet)
+    markerVenues.forEach(venue => {
       // Get heatmap data for this venue
       const heatmapData = heatmapMap.get(venue.id);
       const count = heatmapData?.totalCheckins ?? venueCounts.get(venue.id) ?? 0;
@@ -576,7 +658,7 @@ export function MapView({
 
       markersRef.current.push(marker);
     });
-  }, [mapLoaded, currentZoom, venues, checkIns, heatmapVenues, onVenueClick]);
+  }, [mapLoaded, markerMode, markerVenues, checkIns, heatmapMap, onVenueClick]);
 
   // Calculate active venues count
   // Heatmap 2.0: Prefer heatmapVenues data if available
