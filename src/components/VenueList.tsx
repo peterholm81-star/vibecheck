@@ -89,7 +89,7 @@ export function VenueList({
     userLat: userPosition?.lat ?? DEFAULT_CENTER[1],
     userLon: userPosition?.lon ?? DEFAULT_CENTER[0],
     radiusKm: cityRadiusKm,
-    nightlifeOnly: true,
+    nightlifeOnly: false, // Inkluder alle venues (både overpass og google_places)
     // Don't require userPosition - we have DEFAULT_CENTER as fallback
     enabled: !!effectiveCityName,
     useNearestCity: true,
@@ -159,6 +159,9 @@ export function VenueList({
     console.log('[Venues] Ingen city-venues, fallback til', fallbackCityVenues.length, 'geo-filtrerte venues');
     return fallbackCityVenues;
   }, [convertedCityVenues, fallbackCityVenues, venuesLoading, effectiveCityName]);
+
+  // Debug logging for sammenligning med CheckIn
+  console.log('[Venues fanen]', effectiveCityName, 'propsVenues:', propsVenues.length, 'cityVenues:', convertedCityVenues.length, 'vises:', venues.length);
   
   // Filter venues by search query
   const searchFilteredVenues = useMemo(() => {

@@ -79,7 +79,7 @@ export function CheckInForm({ venues: propsVenues, selectedVenueId, onSubmit }: 
     userLat: DEFAULT_CENTER[1],
     userLon: DEFAULT_CENTER[0],
     radiusKm: cityRadiusKm,
-    nightlifeOnly: true,
+    nightlifeOnly: false, // Inkluder alle venues (både overpass og google_places)
     enabled: !!effectiveCityName,
     useNearestCity: true,
     useFallback: true,
@@ -134,8 +134,8 @@ export function CheckInForm({ venues: propsVenues, selectedVenueId, onSubmit }: 
   
   const displayCityName = resolvedCityName || effectiveCityName || 'byen';
   
-  // Debug logging
-  console.log('[CheckIn] Aktiv by:', effectiveCityName, 'venues:', venues.length, 'cityVenues:', cityVenues.length);
+  // Debug logging for sammenligning med Venues-fanen
+  console.log('[Check-in]', effectiveCityName, 'propsVenues:', propsVenues.length, 'cityVenues:', cityFilteredVenues.length, 'vises:', venues.length);
 
   // Sync venueId state when selectedVenueId prop changes (e.g., navigating from venue details)
   useEffect(() => {
