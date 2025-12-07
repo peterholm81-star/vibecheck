@@ -68,31 +68,16 @@ const sectionConfig: Array<{
 ];
 
 // ============================================
-// VENUE LIST FOR INSIGHTS SELECTOR
+// VENUE TYPE FOR DYNAMIC SELECTOR
 // ============================================
-// NOTE: These are PLACEHOLDER IDs that don't match real venue UUIDs in the database.
-// 
-// For REAL testing of the loyalty feature, you need to:
-// 1. Find the actual venue UUID in Supabase:
-//    SELECT id, name FROM public.venues WHERE name ILIKE '%Circus%';
-// 2. Replace one of the placeholder IDs below with the real UUID.
-//
-// Example: If Circus has UUID 'a1b2c3d4-...' in your database, change:
-//    { id: '1', name: 'Bar Circus' }
-// to:
-//    { id: 'a1b2c3d4-...', name: 'Bar Circus' }
-//
-// This will allow LoyaltyCard to fetch real data from venue_loyalty_city_rank.
+// Venues fetches dynamically from Supabase - no more hardcoded IDs!
+// This enables real UUID-based venue selection for LoyaltyCard.
 // ============================================
-const venueList = [
-  { id: '1', name: 'Bar Circus' },
-  { id: '2', name: 'Søstrene Karlsen Solsiden' },
-  { id: '3', name: 'Downtown Nattklubb' },
-  { id: '4', name: 'Bror Bar' },
-  { id: '5', name: 'Habitat Cocktailbar' },
-  { id: '6', name: 'Work-Work' },
-  { id: '7', name: 'Ramp Pub & Scene' },
-];
+type VenueOption = {
+  id: string;
+  name: string;
+  city: string | null;
+};
 
 // Period options with numeric values
 const periodOptions = [
@@ -391,8 +376,77 @@ function LoyaltyCard({ venueId }: { venueId: string }) {
 function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
   const [period, setPeriod] = useState('30d');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedVenueId, setSelectedVenueId] = useState<string>(venueList[0].id);
   const [activeSection, setActiveSection] = useState<InsightsSection>('overview');
+
+  // ============================================
+  // DYNAMIC VENUE STATE
+  // ============================================
+  const [venues, setVenues] = useState<VenueOption[]>([]);
+  const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
+  const [selectedCity, setSelectedCity] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isLoadingVenues, setIsLoadingVenues] = useState<boolean>(true);
+  const [venueError, setVenueError] = useState<string | null>(null);
+
+  // Fetch venues from Supabase on mount
+  useEffect(() => {
+    const fetchVenues = async () => {
+      setIsLoadingVenues(true);
+      setVenueError(null);
+
+      const { data, error } = await supabase
+        .from('venues')
+        .select('id, name, city')
+        .order('city', { ascending: true })
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error('Error loading venues for Insights:', error);
+        setVenueError('Kunne ikke laste inn utesteder.');
+        setIsLoadingVenues(false);
+        return;
+      }
+
+      const typedData = (data ?? []) as VenueOption[];
+      setVenues(typedData);
+
+      // Velg første venue som default hvis ingen er valgt
+      if (typedData.length > 0) {
+        setSelectedVenueId(typedData[0].id);
+      }
+
+      setIsLoadingVenues(false);
+    };
+
+    fetchVenues();
+  }, []);
+
+  // City options derived from venues
+  const cityOptions = useMemo(() => {
+    const cities = new Set<string>();
+    venues.forEach((v) => {
+      if (v.city) {
+        cities.add(v.city);
+      }
+    });
+    return Array.from(cities).sort((a, b) => a.localeCompare(b, 'nb'));
+  }, [venues]);
+
+  // Filtered venues based on city and search term
+  const filteredVenues = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+
+    return venues.filter((v) => {
+      if (selectedCity !== 'all' && v.city !== selectedCity) return false;
+
+      if (term) {
+        const haystack = `${v.name} ${v.city ?? ''}`.toLowerCase();
+        return haystack.includes(term);
+      }
+
+      return true;
+    });
+  }, [venues, selectedCity, searchTerm]);
 
   // Convert period string to numeric timeRange
   const timeRange = useMemo(() => {
@@ -401,7 +455,7 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
   }, [period]);
 
   // Get selected venue name
-  const selectedVenue = venueList.find(v => v.id === selectedVenueId);
+  const selectedVenue = venues.find(v => v.id === selectedVenueId);
   const venueName = selectedVenue?.name || 'Velg sted';
 
   const handleRefresh = () => {
@@ -411,6 +465,17 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
 
   // Render section content based on activeSection
   const renderSectionContent = () => {
+    // Show loading state if no venue selected yet
+    if (!selectedVenueId) {
+      return (
+        <div className="p-6 bg-[#11121b] border border-neutral-800/50 rounded-2xl">
+          <p className="text-sm text-slate-400">
+            {isLoadingVenues ? 'Laster inn utesteder…' : 'Velg et utested for å se data.'}
+          </p>
+        </div>
+      );
+    }
+
     switch (activeSection) {
       case 'overview':
         return (
@@ -575,28 +640,62 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
         {/* Admin Venue Selector - Full width above sidebar+content */}
         <div className="mb-6 p-4 bg-[#11121b] border border-neutral-800/50 rounded-2xl">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-violet-500/20 rounded-lg">
-                <MapPin size={18} className="text-violet-400" />
-              </div>
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider">Velg sted</p>
-                <p className="text-sm text-slate-300 mt-0.5">Viser insights for valgt venue</p>
-              </div>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-violet-500/20 rounded-lg">
+              <MapPin size={18} className="text-violet-400" />
             </div>
+            <div>
+              <p className="text-xs text-slate-500 uppercase tracking-wider">Velg sted</p>
+              <p className="text-sm text-slate-300 mt-0.5">Viser insights for valgt venue</p>
+            </div>
+          </div>
+
+          {/* By-filter + søkefelt */}
+          <div className="flex flex-col sm:flex-row gap-3 mb-4">
             <select
-              value={selectedVenueId}
-              onChange={(e) => setSelectedVenueId(e.target.value)}
-              className="bg-[#1a1b2b] border border-neutral-700 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 min-w-[200px] cursor-pointer"
+              value={selectedCity}
+              onChange={(e) => setSelectedCity(e.target.value)}
+              className="bg-[#1a1b2b] border border-neutral-700 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30"
             >
-              {venueList.map((venue) => (
-                <option key={venue.id} value={venue.id}>
-                  {venue.name}
+              <option value="all">Alle byer</option>
+              {cityOptions.map((city) => (
+                <option key={city} value={city}>
+                  {city}
                 </option>
               ))}
             </select>
+
+            <input
+              type="text"
+              placeholder="Søk etter utested…"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="flex-1 bg-[#1a1b2b] border border-neutral-700 rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30"
+            />
           </div>
+
+          {/* Venue dropdown */}
+          {isLoadingVenues ? (
+            <div className="text-slate-400 text-sm py-2">Laster inn utesteder…</div>
+          ) : venueError ? (
+            <div className="text-red-400 text-sm py-2">{venueError}</div>
+          ) : filteredVenues.length === 0 ? (
+            <div className="text-slate-400 text-sm py-2">
+              Fant ingen utesteder som matcher filtrene.
+            </div>
+          ) : (
+            <select
+              value={selectedVenueId ?? ''}
+              onChange={(e) => setSelectedVenueId(e.target.value)}
+              className="bg-[#1a1b2b] border border-neutral-700 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 w-full sm:w-auto sm:min-w-[300px] cursor-pointer"
+            >
+              {filteredVenues.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name} {v.city ? `– ${v.city}` : ''}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         {/* Sidebar + Main Content */}
