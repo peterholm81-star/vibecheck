@@ -73,7 +73,6 @@ export function VenueList({
   }, []);
   
   // Fetch venues for the active city using the same hook as MapView
-  // Note: We use DEFAULT_CENTER as fallback so we don't need to wait for userPosition
   const {
     venues: cityVenues,
     loading: venuesLoading,
@@ -88,20 +87,10 @@ export function VenueList({
     userLon: userPosition?.lon ?? DEFAULT_CENTER[0],
     radiusKm: cityRadiusKm,
     nightlifeOnly: true,
-    // Don't require userPosition - we have DEFAULT_CENTER as fallback
-    enabled: !!effectiveCityName,
+    enabled: !!userPosition && !!effectiveCityName,
     useNearestCity: true,
     useFallback: true,
   });
-  
-  // DEBUG: Log city resolution
-  useEffect(() => {
-    console.log("[VenueList] effectiveCityName:", effectiveCityName);
-    console.log("[VenueList] resolvedCityId:", resolvedCityId);
-    console.log("[VenueList] resolvedCityName:", resolvedCityName);
-    console.log("[VenueList] cityVenues count:", cityVenues.length);
-    console.log("[VenueList] localPrefs.favoriteCity:", localPrefs.favoriteCity);
-  }, [effectiveCityName, resolvedCityId, resolvedCityName, cityVenues.length, localPrefs.favoriteCity]);
   
   // Convert VenuePoint[] to Venue[] format
   const convertedCityVenues: Venue[] = useMemo(() => {
@@ -116,23 +105,13 @@ export function VenueList({
     }));
   }, [cityVenues]);
   
-  // Use city-specific venues if available, fall back to props during loading or on error
-  // This ensures VenueList shows something rather than "Ingen steder" when API is slow
+  // Use city-specific venues if available, otherwise fall back to props
   const venues = useMemo(() => {
-    // If we have city venues from the API, use them
-    if (convertedCityVenues.length > 0) {
-      console.log('[Venues] Bruker', convertedCityVenues.length, 'venues fra API for', effectiveCityName);
+    if (resolvedCityId && convertedCityVenues.length > 0) {
       return convertedCityVenues;
     }
-    // If we're still loading and have no results yet, use props as temporary fallback
-    if (venuesLoading) {
-      console.log('[Venues] Laster... midlertidig fallback til', propsVenues.length, 'props-venues');
-      return propsVenues;
-    }
-    // If loading is done but we got no venues, return empty (triggers "Ingen steder" message)
-    console.log('[Venues] Ingen venues funnet for', effectiveCityName);
-    return convertedCityVenues;
-  }, [convertedCityVenues, propsVenues, venuesLoading, effectiveCityName]);
+    return propsVenues;
+  }, [resolvedCityId, convertedCityVenues, propsVenues]);
   
   // Filter venues by search query
   const searchFilteredVenues = useMemo(() => {
