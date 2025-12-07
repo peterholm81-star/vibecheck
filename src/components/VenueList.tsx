@@ -116,22 +116,24 @@ export function VenueList({
     }));
   }, [cityVenues]);
   
-  // Use city-specific venues if available, fall back to props during loading or on error
-  // This ensures VenueList shows something rather than "Ingen steder" when API is slow
+  // Use city-specific venues if available, fall back to props otherwise
   const venues = useMemo(() => {
-    // If we have city venues from the API, use them
+    // 1) Hvis vi har by-filtrerte venues fra useCityVenues, bruk dem
     if (convertedCityVenues.length > 0) {
       console.log('[Venues] Bruker', convertedCityVenues.length, 'venues fra API for', effectiveCityName);
       return convertedCityVenues;
     }
-    // If we're still loading and have no results yet, use props as temporary fallback
+
+    // 2) Hvis vi fortsatt laster, bruk propsVenues som midlertidig fallback
     if (venuesLoading) {
       console.log('[Venues] Laster... midlertidig fallback til', propsVenues.length, 'props-venues');
       return propsVenues;
     }
-    // If loading is done but we got no venues, return empty (triggers "Ingen steder" message)
-    console.log('[Venues] Ingen venues funnet for', effectiveCityName);
-    return convertedCityVenues;
+
+    // 3) Etter lasting – hvis by-listen fortsatt er tom, bruk propsVenues
+    //    (bedre å vise noe enn "Ingen steder" hvis vi egentlig har venues)
+    console.log('[Venues] Ingen by-venues, fallback til', propsVenues.length, 'props-venues');
+    return propsVenues;
   }, [convertedCityVenues, propsVenues, venuesLoading, effectiveCityName]);
   
   // Filter venues by search query
