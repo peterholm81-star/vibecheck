@@ -6,8 +6,9 @@
  * PIN authentication is handled by InsightsApp
  */
 
-import { useState, useMemo } from 'react';
-import { ArrowLeft, Calendar, RefreshCw, MapPin, BarChart3, Flame, TrendingUp, Users } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { ArrowLeft, Calendar, RefreshCw, MapPin, BarChart3, Flame, TrendingUp, Users, Award } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import {
   KPISection,
   TrendGraphSection,
@@ -209,6 +210,159 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }
 }
 
 // ============================================
+// LOYALTY CARD: Viser lojalitetsstatistikk fra venue_loyalty_city_rank
+// ============================================
+
+interface LoyaltyData {
+  venue_id: string;
+  venue_name: string;
+  city_name: string;
+  retention_score: number;
+  loyalty_rank: number;
+  venues_in_city: number;
+  weekly_returners: number;
+  monthly_returners: number;
+  high_frequency_guests: number;
+  churned_users: number;
+  total_users_90d: number;
+}
+
+function LoyaltyCard({ venueId }: { venueId: string }) {
+  const [loyaltyData, setLoyaltyData] = useState<LoyaltyData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchLoyaltyData() {
+      setIsLoading(true);
+      setError(null);
+
+      // TODO: venueId kommer fra props. Når innlogget venue er implementert,
+      // bør dette kobles til den innloggede venue-ID-en automatisk.
+      const { data, error: fetchError } = await supabase
+        .from('venue_loyalty_city_rank')
+        .select('*')
+        .eq('venue_id', venueId)
+        .maybeSingle();
+
+      if (fetchError) {
+        console.error('[LoyaltyCard] Feil ved henting:', fetchError);
+        setError('Kunne ikke hente lojalitetsstatistikk.');
+      } else {
+        setLoyaltyData(data);
+      }
+      setIsLoading(false);
+    }
+
+    if (venueId) {
+      fetchLoyaltyData();
+    }
+  }, [venueId]);
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="p-6 bg-[#11121b] border border-neutral-800/50 rounded-2xl">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 bg-amber-500/20 rounded-lg">
+            <Award size={18} className="text-amber-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-white">Lojalitet</h3>
+        </div>
+        <p className="text-sm text-slate-400">Laster lojalitetsdata…</p>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="p-6 bg-[#11121b] border border-red-800/30 rounded-2xl">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 bg-red-500/20 rounded-lg">
+            <Award size={18} className="text-red-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-white">Lojalitet</h3>
+        </div>
+        <p className="text-sm text-red-400">{error}</p>
+      </div>
+    );
+  }
+
+  // No data state
+  if (!loyaltyData) {
+    return (
+      <div className="p-6 bg-[#11121b] border border-neutral-800/50 rounded-2xl">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 bg-amber-500/20 rounded-lg">
+            <Award size={18} className="text-amber-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-white">Lojalitet</h3>
+        </div>
+        <p className="text-sm text-slate-500">Ingen lojalitetsdata tilgjengelig ennå.</p>
+      </div>
+    );
+  }
+
+  // Success state - vis lojalitetsdata
+  return (
+    <div className="p-6 bg-[#11121b] border border-neutral-800/50 rounded-2xl">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-amber-500/20 rounded-lg">
+            <Award size={18} className="text-amber-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white">Lojalitet</h3>
+            <p className="text-xs text-slate-500">{loyaltyData.city_name}</p>
+          </div>
+        </div>
+        {/* Lojalitetsscore badge */}
+        <div className="text-right">
+          <div className="text-2xl font-bold text-amber-400">
+            {loyaltyData.retention_score}<span className="text-sm text-slate-500">/100</span>
+          </div>
+          <p className="text-xs text-slate-500">Lojalitetsscore</p>
+        </div>
+      </div>
+
+      {/* Plassering */}
+      <div className="mb-5 p-4 bg-gradient-to-r from-amber-500/10 to-orange-500/10 rounded-xl border border-amber-500/20">
+        <p className="text-sm text-slate-300">
+          <span className="text-amber-400 font-semibold">#{loyaltyData.loyalty_rank}</span>
+          {' '}av {loyaltyData.venues_in_city} venues i {loyaltyData.city_name}
+        </p>
+      </div>
+
+      {/* Statistikk-grid */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-[#1a1b2b] rounded-xl p-3 text-center">
+          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Ukentlig</p>
+          <p className="text-xl font-semibold text-emerald-400">{loyaltyData.weekly_returners}</p>
+          <p className="text-xs text-slate-500">returgjester</p>
+        </div>
+        <div className="bg-[#1a1b2b] rounded-xl p-3 text-center">
+          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Månedlig</p>
+          <p className="text-xl font-semibold text-sky-400">{loyaltyData.monthly_returners}</p>
+          <p className="text-xs text-slate-500">returgjester</p>
+        </div>
+        <div className="bg-[#1a1b2b] rounded-xl p-3 text-center">
+          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">High-freq</p>
+          <p className="text-xl font-semibold text-violet-400">{loyaltyData.high_frequency_guests}</p>
+          <p className="text-xs text-slate-500">stamgjester</p>
+        </div>
+        <div className="bg-[#1a1b2b] rounded-xl p-3 text-center">
+          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Totalt</p>
+          <p className="text-xl font-semibold text-slate-300">{loyaltyData.total_users_90d}</p>
+          <p className="text-xs text-slate-500">gjester (90d)</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // INSIGHTS DASHBOARD CONTENT (actual dashboard)
 // ============================================
 
@@ -248,6 +402,10 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
             <div className="mt-8 grid grid-cols-1 xl:grid-cols-2 gap-6">
               <ActivityHeatmap timeRange={timeRange} selectedVenueId={selectedVenueId} />
               <VibeHeatmap timeRange={timeRange} selectedVenueId={selectedVenueId} />
+            </div>
+            {/* Lojalitetskort – viser data fra venue_loyalty_city_rank */}
+            <div className="mt-8">
+              <LoyaltyCard venueId={selectedVenueId} />
             </div>
             <DemographicsSection timeRange={timeRange} selectedVenueId={selectedVenueId} />
           </>
