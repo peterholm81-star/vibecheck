@@ -67,7 +67,23 @@ const sectionConfig: Array<{
   },
 ];
 
-// Placeholder venue list for admin selector
+// ============================================
+// VENUE LIST FOR INSIGHTS SELECTOR
+// ============================================
+// NOTE: These are PLACEHOLDER IDs that don't match real venue UUIDs in the database.
+// 
+// For REAL testing of the loyalty feature, you need to:
+// 1. Find the actual venue UUID in Supabase:
+//    SELECT id, name FROM public.venues WHERE name ILIKE '%Circus%';
+// 2. Replace one of the placeholder IDs below with the real UUID.
+//
+// Example: If Circus has UUID 'a1b2c3d4-...' in your database, change:
+//    { id: '1', name: 'Bar Circus' }
+// to:
+//    { id: 'a1b2c3d4-...', name: 'Bar Circus' }
+//
+// This will allow LoyaltyCard to fetch real data from venue_loyalty_city_rank.
+// ============================================
 const venueList = [
   { id: '1', name: 'Bar Circus' },
   { id: '2', name: 'Søstrene Karlsen Solsiden' },
