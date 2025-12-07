@@ -26,7 +26,7 @@ interface InsightsDashboardProps {
 }
 
 // Section type for sidebar navigation
-type InsightsSection = 'overview' | 'vibe' | 'traffic' | 'demographics';
+type InsightsSection = 'overview' | 'vibe' | 'traffic' | 'demographics' | 'loyalty';
 
 // Section configuration
 const sectionConfig: Array<{
@@ -58,6 +58,12 @@ const sectionConfig: Array<{
     label: 'Demografi',
     description: 'Hvem som er her',
     icon: <Users size={18} />,
+  },
+  {
+    id: 'loyalty',
+    label: 'Lojalitet',
+    description: 'Returgjester & stamkunder',
+    icon: <Award size={18} />,
   },
 ];
 
@@ -403,9 +409,25 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
               <ActivityHeatmap timeRange={timeRange} selectedVenueId={selectedVenueId} />
               <VibeHeatmap timeRange={timeRange} selectedVenueId={selectedVenueId} />
             </div>
-            {/* Lojalitetskort – viser data fra venue_loyalty_city_rank */}
-            <div className="mt-8">
-              <LoyaltyCard venueId={selectedVenueId} />
+            {/* Lojalitets-teaser – full analyse finnes under Lojalitet-fanen */}
+            <div className="mt-8 p-4 bg-[#11121b] border border-neutral-800/50 rounded-2xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-500/20 rounded-lg">
+                    <Award size={18} className="text-amber-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-white">Lojalitetsanalyse</p>
+                    <p className="text-xs text-slate-500">Se returgjester og stamkunder</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setActiveSection('loyalty')}
+                  className="px-3 py-1.5 text-xs font-medium text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg transition-colors"
+                >
+                  Vis detaljer →
+                </button>
+              </div>
             </div>
             <DemographicsSection timeRange={timeRange} selectedVenueId={selectedVenueId} />
           </>
@@ -472,6 +494,17 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
               subtitle={`Alder, sivilstatus, intensjoner og vibe-fordeling basert på siste ${timeRange} dager`} 
             />
             <DemographicsSection timeRange={timeRange} selectedVenueId={selectedVenueId} />
+          </>
+        );
+
+      case 'loyalty':
+        return (
+          <>
+            <SectionHeader 
+              title="Lojalitet" 
+              subtitle="Hvor godt gjestene kommer tilbake til dette stedet" 
+            />
+            <LoyaltyCard venueId={selectedVenueId} />
           </>
         );
 
