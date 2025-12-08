@@ -347,7 +347,8 @@ function MainApp({ userId }: MainAppProps) {
     vibeScore: VibeScore,
     intent: Intent,
     relationshipStatus: RelationshipStatus | null,
-    onsIntent: OnsIntent | null
+    onsIntent: OnsIntent | null,
+    ageBandFromForm: AgeBand | null
   ) => {
     // Verify the venue exists in our list
     const venue = state.venues.find((v) => v.id === venueId);
@@ -362,8 +363,9 @@ function MainApp({ userId }: MainAppProps) {
     // Gender: directly from profile
     const gender = profile?.gender ?? null;
     
-    // Age band: derived from profile.birthYear
-    const ageBand = getAgeBandFromBirthYear(profile?.birthYear ?? null);
+    // Age band: use form value if provided, otherwise derive from profile
+    // Valid values: "18_25", "25_30", "30_35", "35_40", "40_plus", or null
+    const ageBand = ageBandFromForm ?? getAgeBandFromBirthYear(profile?.birthYear ?? null);
     
     // Relationship status for check-in:
     // If user has showAsSingle=true in profile, force 'single' status

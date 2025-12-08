@@ -8,12 +8,27 @@ import {
   RELATIONSHIP_STATUS_LABELS,
   ONS_INTENT_LABELS,
 } from '../types';
-import { useProfile, type ProfileRelationshipStatus } from '../hooks/useProfile';
+import { useProfile, type ProfileRelationshipStatus, type AgeBand } from '../hooks/useProfile';
 import { useCityVenues, VenuePoint } from '../hooks/useCityVenues';
 import { useCityName } from '../hooks/useCityName';
 import { getCityRadius } from '../config/cityRadius';
 import { DEFAULT_CENTER } from '../config/map';
 import { calculateDistanceMeters } from '../utils/geo';
+import { getAgeBandFromBirthYear, getAgeBandLabel } from '../utils/age';
+
+// ============================================
+// AGE BAND OPTIONS
+// ============================================
+// These values MUST match the database constraint exactly
+const AGE_BAND_OPTIONS: AgeBand[] = ['18_25', '25_30', '30_35', '35_40', '40_plus'];
+
+const AGE_BAND_LABELS: Record<AgeBand, string> = {
+  '18_25': '18-25 år',
+  '25_30': '25-30 år',
+  '30_35': '30-35 år',
+  '35_40': '35-40 år',
+  '40_plus': '40+ år',
+};
 
 // ============================================
 // HELPER: Map profile relationship status to check-in relationship status
@@ -42,7 +57,8 @@ interface CheckInFormProps {
     vibeScore: VibeScore,
     intent: Intent,
     relationshipStatus: RelationshipStatus | null,
-    onsIntent: OnsIntent | null
+    onsIntent: OnsIntent | null,
+    ageBand: AgeBand | null
   ) => Promise<void>;
 }
 
@@ -58,6 +74,7 @@ export function CheckInForm({ venues: propsVenues, selectedVenueId, onSubmit }: 
   const [intent, setIntent] = useState<Intent | ''>('');
   const [relationshipStatus, setRelationshipStatus] = useState<RelationshipStatus | null>(null);
   const [onsIntent, setOnsIntent] = useState<OnsIntent | null>(null);
+  const [ageBand, setAgeBand] = useState<AgeBand | null>(null);
   const [formState, setFormState] = useState<FormState>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [defaultsApplied, setDefaultsApplied] = useState(false);
@@ -173,6 +190,13 @@ export function CheckInForm({ venues: propsVenues, selectedVenueId, onSubmit }: 
         setOnsIntent(localPrefs.defaultOnsIntent);
       }
       
+      // Age band: derive from profile.birthYear
+      // Values MUST be exactly: "18_25", "25_30", "30_35", "35_40", "40_plus", or null
+      if (profile?.birthYear) {
+        const derivedAgeBand = getAgeBandFromBirthYear(profile.birthYear);
+        setAgeBand(derivedAgeBand);
+      }
+      
       setDefaultsApplied(true);
     }
   }, [isLoading, profile, localPrefs, defaultsApplied]);
@@ -186,7 +210,9 @@ export function CheckInForm({ venues: propsVenues, selectedVenueId, onSubmit }: 
     setErrorMessage(null);
 
     try {
-      await onSubmit(venueId, vibeScore, intent, relationshipStatus, onsIntent);
+      // Send ageBand as exact value or null - database expects:
+      // "18_25", "25_30", "30_35", "35_40", "40_plus", or null
+      await onSubmit(venueId, vibeScore, intent, relationshipStatus, onsIntent, ageBand);
       setFormState('success');
 
       // Reset form after success (but keep profile defaults for next time)
@@ -202,6 +228,8 @@ export function CheckInForm({ venues: propsVenues, selectedVenueId, onSubmit }: 
             : localPrefs.defaultRelationshipStatus
         );
         setOnsIntent(localPrefs.defaultOnsIntent);
+        // Re-apply age band from profile
+        setAgeBand(profile?.birthYear ? getAgeBandFromBirthYear(profile.birthYear) : null);
         setFormState('idle');
       }, 2000);
     } catch (err) {
@@ -360,6 +388,35 @@ export function CheckInForm({ venues: propsVenues, selectedVenueId, onSubmit }: 
               <option value="not_interested">{ONS_INTENT_LABELS.not_interested}</option>
               <option value="prefer_not_to_say">{ONS_INTENT_LABELS.prefer_not_to_say}</option>
             </select>
+          </div>
+
+          {/* Age Band (optional) */}
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Aldersgruppe (valgfritt)
+            </label>
+            <select
+              value={ageBand ?? ''}
+              onChange={(e) =>
+                setAgeBand(
+                  e.target.value === '' ? null : (e.target.value as AgeBand)
+                )
+              }
+              disabled={formState === 'submitting'}
+              className="w-full px-4 py-3.5 sm:py-3 bg-slate-700 border border-slate-600 rounded-xl sm:rounded-lg text-base sm:text-sm text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 disabled:opacity-50 disabled:cursor-not-allowed appearance-none"
+            >
+              <option value="">Ikke valgt</option>
+              {AGE_BAND_OPTIONS.map((band) => (
+                <option key={band} value={band}>
+                  {AGE_BAND_LABELS[band]}
+                </option>
+              ))}
+            </select>
+            {profile?.birthYear && (
+              <p className="text-xs text-slate-500 mt-1">
+                Forhåndsvalgt fra profil
+              </p>
+            )}
           </div>
 
           {/* Error Message */}
