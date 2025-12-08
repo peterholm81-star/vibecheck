@@ -43,11 +43,16 @@ dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 const SEED_DAYS = 60; // Generate data for the last 60 days
 const BIG_CITIES = ['Oslo', 'Bergen', 'Trondheim', 'Stavanger', 'Tromsø'];
 
-// Check-in counts per venue
+// Check-in counts per venue (historical)
 const BIG_CITY_MIN = 150;
 const BIG_CITY_MAX = 300;
 const NORMAL_CITY_MIN = 60;
 const NORMAL_CITY_MAX = 200;
+
+// Live check-ins per venue (last 60 minutes)
+const LIVE_CHECKINS_MIN = 5;
+const LIVE_CHECKINS_MAX = 15;
+const LIVE_WINDOW_MINUTES = 60;
 
 // Batch size for inserts
 const INSERT_BATCH_SIZE = 500;
@@ -328,6 +333,38 @@ function generateCheckInForVenue(venueId: string, daysAgo: number): CheckInInser
   };
 }
 
+/**
+ * Get a random timestamp within the last N minutes (for "live" check-ins)
+ */
+function getRecentTimestamp(withinMinutes: number): Date {
+  const now = new Date();
+  const minutesAgo = randomInt(1, withinMinutes);
+  const secondsAgo = randomInt(0, 59);
+  
+  return new Date(now.getTime() - (minutesAgo * 60 * 1000) - (secondsAgo * 1000));
+}
+
+/**
+ * Generate a "live" check-in for a venue (within the last 60 minutes)
+ * Uses current time context for vibe/intent generation
+ */
+function generateLiveCheckInForVenue(venueId: string): CheckInInsert {
+  const timestamp = getRecentTimestamp(LIVE_WINDOW_MINUTES);
+  const relationshipStatus = generateRelationshipStatus();
+  
+  return {
+    venue_id: venueId,
+    user_id: generateUserId(),
+    vibe_score: generateVibeScore(timestamp),
+    intent: generateIntent(timestamp),
+    relationship_status: relationshipStatus,
+    ons_intent: generateOnsIntent(relationshipStatus),
+    gender: generateGender(),
+    age_band: generateAgeBand(),
+    created_at: timestamp.toISOString(),
+  };
+}
+
 // ============================================
 // MAIN SEED FUNCTION
 // ============================================
@@ -473,10 +510,51 @@ async function seedDemoData(): Promise<void> {
     console.log(`   Inserted ${inserted}/${allCheckIns.length} check-ins...`);
   }
   
-  console.log(`   ✓ All ${allCheckIns.length} check-ins inserted\n`);
+  console.log(`   ✓ All ${allCheckIns.length} historical check-ins inserted\n`);
 
   // ============================================
-  // STEP 6: Run loyalty calculation
+  // STEP 6: Generate "live" check-ins (last 60 minutes)
+  // ============================================
+  console.log('⚡ Generating live check-ins (last 60 minutes)...\n');
+  
+  const liveCheckIns: CheckInInsert[] = [];
+  
+  for (const venue of venues as Venue[]) {
+    const liveCount = randomInt(LIVE_CHECKINS_MIN, LIVE_CHECKINS_MAX);
+    
+    for (let i = 0; i < liveCount; i++) {
+      liveCheckIns.push(generateLiveCheckInForVenue(venue.id));
+    }
+  }
+  
+  console.log(`   ✓ Generated ${liveCheckIns.length} live check-ins for ${venues.length} venues\n`);
+
+  // ============================================
+  // STEP 7: Insert live check-ins
+  // ============================================
+  console.log('💾 Inserting live check-ins...');
+  
+  let liveInserted = 0;
+  for (let i = 0; i < liveCheckIns.length; i += INSERT_BATCH_SIZE) {
+    const batch = liveCheckIns.slice(i, i + INSERT_BATCH_SIZE);
+    
+    const { error: insertError } = await supabase
+      .from('check_ins')
+      .insert(batch);
+    
+    if (insertError) {
+      console.error(`❌ Error inserting live batch ${i}-${i + batch.length}:`, insertError.message);
+      process.exit(1);
+    }
+    
+    liveInserted += batch.length;
+    console.log(`   Inserted ${liveInserted}/${liveCheckIns.length} live check-ins...`);
+  }
+  
+  console.log(`   ✓ All ${liveCheckIns.length} live check-ins inserted\n`);
+
+  // ============================================
+  // STEP 8: Run loyalty calculation
   // ============================================
   console.log('🏆 Running loyalty calculation...');
   
@@ -492,12 +570,15 @@ async function seedDemoData(): Promise<void> {
   }
 
   // ============================================
-  // STEP 7: Print summary
+  // STEP 9: Print summary
   // ============================================
   const counts = venueStats.map((v) => v.count);
   const minCount = Math.min(...counts);
   const maxCount = Math.max(...counts);
   const avgCount = Math.round(counts.reduce((a, b) => a + b, 0) / counts.length);
+  
+  const totalCheckIns = allCheckIns.length + liveCheckIns.length;
+  const avgLivePerVenue = Math.round(liveCheckIns.length / venues.length);
   
   // Group by city
   const cityBreakdown = new Map<string, { venues: number; checkIns: number }>();
@@ -511,16 +592,19 @@ async function seedDemoData(): Promise<void> {
   console.log('═'.repeat(60));
   console.log('📊 SEED SUMMARY');
   console.log('═'.repeat(60));
-  console.log(`   Total venues:     ${venues.length}`);
-  console.log(`   Total check-ins:  ${allCheckIns.length}`);
-  console.log(`   Time period:      Last ${SEED_DAYS} days`);
+  console.log(`   Total venues:        ${venues.length}`);
+  console.log(`   Historical check-ins: ${allCheckIns.length} (last ${SEED_DAYS} days)`);
+  console.log(`   Live check-ins:       ${liveCheckIns.length} (last ${LIVE_WINDOW_MINUTES} min)`);
+  console.log(`   Total check-ins:      ${totalCheckIns}`);
   console.log('');
-  console.log('   Check-ins per venue:');
+  console.log('   Historical per venue:');
   console.log(`     Min:     ${minCount}`);
   console.log(`     Max:     ${maxCount}`);
   console.log(`     Average: ${avgCount}`);
   console.log('');
-  console.log('   By city:');
+  console.log(`   Live per venue:      ~${avgLivePerVenue} (${LIVE_CHECKINS_MIN}-${LIVE_CHECKINS_MAX})`);
+  console.log('');
+  console.log('   By city (historical):');
   
   // Sort cities by check-in count descending
   const sortedCities = Array.from(cityBreakdown.entries())
@@ -533,7 +617,9 @@ async function seedDemoData(): Promise<void> {
   
   console.log('═'.repeat(60));
   console.log('\n✅ Demo data seeding complete!');
-  console.log('\nYou can now test the Insights dashboard at /insights\n');
+  console.log('\n📍 Map & Venues now have live activity from the last 60 minutes');
+  console.log('📊 Insights dashboard has 60 days of historical data');
+  console.log('\nTest at /map or /insights\n');
   
   process.exit(0);
 }
