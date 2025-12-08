@@ -9,6 +9,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { ArrowLeft, Calendar, RefreshCw, MapPin, BarChart3, Flame, TrendingUp, Users, Award } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { getCities, City } from '../api/cities';
+import { CityOption, CITY_ALL_VALUE, toCityOptions } from '../constants/cities';
 import {
   KPISection,
   TrendGraphSection,
@@ -383,10 +385,32 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
   // ============================================
   const [venues, setVenues] = useState<VenueOption[]>([]);
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
-  const [selectedCity, setSelectedCity] = useState<string>('all');
+  const [selectedCity, setSelectedCity] = useState<string>(CITY_ALL_VALUE);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoadingVenues, setIsLoadingVenues] = useState<boolean>(true);
   const [venueError, setVenueError] = useState<string | null>(null);
+
+  // ============================================
+  // CITY LIST FROM CITIES TABLE (same as ProfileSettings)
+  // ============================================
+  const [availableCities, setAvailableCities] = useState<City[]>([]);
+
+  // Fetch cities from the shared cities table (same source as Favorittby in profile)
+  useEffect(() => {
+    getCities()
+      .then((cities) => {
+        setAvailableCities(cities);
+      })
+      .catch((err) => {
+        console.error('[Insights] Failed to fetch cities:', err);
+      });
+  }, []);
+
+  // City options for dropdown - uses shared cities from database
+  // Excludes "auto" since that doesn't make sense for filtering
+  const cityOptions: CityOption[] = useMemo(() => {
+    return toCityOptions(availableCities);
+  }, [availableCities]);
 
   // Fetch venues from Supabase on mount
   useEffect(() => {
@@ -421,30 +445,26 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
     fetchVenues();
   }, []);
 
-  // City options derived from venues
-  const cityOptions = useMemo(() => {
-    const cities = new Set<string>();
-    venues.forEach((v) => {
-      if (v.city) {
-        cities.add(v.city);
-      }
-    });
-    return Array.from(cities).sort((a, b) => a.localeCompare(b, 'nb'));
-  }, [venues]);
-
   // Filtered venues based on city and search term
   const filteredVenues = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
 
     return venues.filter((v) => {
-      if (selectedCity !== 'all' && v.city !== selectedCity) return false;
+      // City filter: case-insensitive comparison
+      const matchesCity =
+        selectedCity === CITY_ALL_VALUE ||
+        !selectedCity ||
+        v.city?.toLowerCase() === selectedCity.toLowerCase();
 
-      if (term) {
-        const haystack = `${v.name} ${v.city ?? ''}`.toLowerCase();
-        return haystack.includes(term);
-      }
+      if (!matchesCity) return false;
 
-      return true;
+      // Search filter: matches name or city
+      const matchesSearch =
+        term.length === 0 ||
+        v.name.toLowerCase().includes(term) ||
+        (v.city && v.city.toLowerCase().includes(term));
+
+      return matchesSearch;
     });
   }, [venues, selectedCity, searchTerm]);
 
@@ -674,10 +694,10 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
               onChange={(e) => setSelectedCity(e.target.value)}
               className="bg-[#1a1b2b] border border-neutral-700 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30"
             >
-              <option value="all">Alle byer</option>
+              <option value={CITY_ALL_VALUE}>Alle byer</option>
               {cityOptions.map((city) => (
-                <option key={city} value={city}>
-                  {city}
+                <option key={city.value} value={city.value}>
+                  {city.label}
                 </option>
               ))}
             </select>
