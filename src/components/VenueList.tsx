@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { MapPin, TrendingUp, Users, Heart, Flame, Zap, Calendar, Sparkles, Search, X, Loader2 } from 'lucide-react';
+import { MapPin, TrendingUp, Users, Heart, Flame, Zap, Calendar, Sparkles, Search, X, Loader2, Navigation } from 'lucide-react';
 import type { Venue, CheckIn, TimeWindow, HeatmapMode, Intent, VenueCategory } from '../types';
 import { VIBE_SCORE_LABELS, VIBE_SCORE_COLORS, VENUE_CATEGORY_LABELS, INTENT_SHORT_LABELS } from '../types';
 import { 
@@ -27,6 +27,7 @@ interface VenueListProps {
   activeAgeBands: AgeBand[];
   activeIntents: Intent[];
   onVenueClick: (venueId: string) => void;
+  onNavigateToVenue?: (venue: Venue) => void; // Optional: Start navigation to venue
 }
 
 export function VenueList({ 
@@ -36,7 +37,8 @@ export function VenueList({
   heatmapMode, 
   activeAgeBands, 
   activeIntents, 
-  onVenueClick 
+  onVenueClick,
+  onNavigateToVenue,
 }: VenueListProps) {
   const { profile, localPrefs } = useProfile();
   const [localSortMode, setLocalSortMode] = useState<'sync' | 'age' | 'intent'>('sync');
@@ -634,8 +636,8 @@ export function VenueList({
                   )}
                 </div>
 
-                {/* Activity indicator */}
-                <div className="flex-shrink-0">
+                {/* Activity indicator + Navigation button */}
+                <div className="flex-shrink-0 flex flex-col items-center gap-2">
                   <div
                     className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg border-2 ${
                       venue.checkInCount >= 8
@@ -651,6 +653,22 @@ export function VenueList({
                   >
                     {venue.checkInCount}
                   </div>
+                  
+                  {/* Navigate button - only show if venue has coordinates */}
+                  {onNavigateToVenue && venue.latitude && venue.longitude && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation(); // Don't trigger venue detail opening
+                        onNavigateToVenue(venue);
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-full transition-colors"
+                      title={`Naviger til ${venue.name}`}
+                    >
+                      <Navigation size={12} />
+                      <span className="hidden sm:inline">Hit</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </button>

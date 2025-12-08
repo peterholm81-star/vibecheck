@@ -685,6 +685,21 @@ export function MapView({
   }, [mapLoaded, markerMode, markerVenues, checkIns, heatmapMap, onVenueClick]);
 
   // ============================================
+  // RESIZE MAP WHEN ENTERING/EXITING NAVIGATION MODE
+  // ============================================
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+    
+    // Give the CSS a moment to apply, then resize the map
+    const timeoutId = setTimeout(() => {
+      map.current?.resize();
+      console.log('[MapView] Resized map for navigation mode:', isNavigating);
+    }, 100);
+    
+    return () => clearTimeout(timeoutId);
+  }, [mapLoaded, isNavigating]);
+
+  // ============================================
   // NAVIGATION ROUTE LAYER
   // ============================================
   useEffect(() => {

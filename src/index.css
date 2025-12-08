@@ -103,19 +103,46 @@
    ============================================ */
 
 .navigation-mode-active {
+  /* Break out of any parent containers */
   position: fixed !important;
-  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
   width: 100vw !important;
   height: 100vh !important;
-  z-index: 1000 !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  z-index: 9999 !important;
   border-radius: 0 !important;
-  background: #000;
+  overflow: visible !important;
+  background: #0f172a; /* slate-900 */
+  
+  /* Override flex-1 from Tailwind */
+  flex: none !important;
 }
 
-/* Ensure map fills the container in navigation mode */
+/* Ensure map canvas fills the container in navigation mode */
 .navigation-mode-active > div:first-child {
-  position: absolute;
-  inset: 0;
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Ensure Mapbox canvas fills the space */
+.navigation-mode-active .mapboxgl-map {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Hide tabs/header when in navigation mode */
+body:has(.navigation-mode-active) header,
+body:has(.navigation-mode-active) nav,
+body:has(.navigation-mode-active) .tab-bar {
+  display: none !important;
 }
 
 /* Navigation pulse animation for user location */
