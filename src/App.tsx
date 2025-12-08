@@ -455,6 +455,7 @@ function MainApp({ userId }: MainAppProps) {
     setNavigationTarget(venue);
     setIsNavigating(true);
     setSelectedVenueId(null); // Close venue detail when starting navigation
+    setActiveTab('map'); // Switch to map tab to show fullscreen navigation
   }, []);
 
   /**
