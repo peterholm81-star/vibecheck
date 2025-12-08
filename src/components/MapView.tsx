@@ -247,6 +247,13 @@ interface MapViewProps {
   activeIntents?: Intent[];
   activeAgeBands?: AgeBand[];
   singlesOnly?: boolean;
+  // Navigation props
+  isNavigating?: boolean;
+  navigationTarget?: Venue | null;
+  navigationUserLocation?: { lat: number; lng: number } | null;
+  routeGeoJson?: GeoJSON.FeatureCollection | null;
+  navigationInfo?: { distanceMeters: number; durationSeconds: number } | null;
+  onStopNavigation?: () => void;
 }
 
 export function MapView({ 
@@ -258,6 +265,13 @@ export function MapView({
   activeIntents = [],
   activeAgeBands = [],
   singlesOnly = false,
+  // Navigation props
+  isNavigating = false,
+  navigationTarget = null,
+  navigationUserLocation = null,
+  routeGeoJson = null,
+  navigationInfo = null,
+  onStopNavigation,
 }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -670,6 +684,66 @@ export function MapView({
     });
   }, [mapLoaded, markerMode, markerVenues, checkIns, heatmapMap, onVenueClick]);
 
+  // ============================================
+  // NAVIGATION ROUTE LAYER
+  // ============================================
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+    
+    const sourceId = 'navigation-route-source';
+    const layerId = 'navigation-route-layer';
+    
+    // Remove existing layer and source
+    if (map.current.getLayer(layerId)) {
+      map.current.removeLayer(layerId);
+    }
+    if (map.current.getSource(sourceId)) {
+      map.current.removeSource(sourceId);
+    }
+    
+    // If not navigating or no route, just clean up
+    if (!isNavigating || !routeGeoJson) {
+      return;
+    }
+    
+    console.log('[MapView] Adding navigation route layer');
+    
+    // Add route source
+    map.current.addSource(sourceId, {
+      type: 'geojson',
+      data: routeGeoJson,
+    });
+    
+    // Add route line layer (on top of everything)
+    map.current.addLayer({
+      id: layerId,
+      type: 'line',
+      source: sourceId,
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round',
+      },
+      paint: {
+        'line-color': '#10b981', // Emerald-500
+        'line-width': 6,
+        'line-opacity': 0.9,
+      },
+    });
+    
+    // Fit map to show route
+    if (navigationUserLocation && navigationTarget?.latitude && navigationTarget?.longitude) {
+      const bounds = new mapboxgl.LngLatBounds();
+      bounds.extend([navigationUserLocation.lng, navigationUserLocation.lat]);
+      bounds.extend([navigationTarget.longitude, navigationTarget.latitude]);
+      
+      map.current.fitBounds(bounds, {
+        padding: { top: 100, bottom: 150, left: 50, right: 50 },
+        maxZoom: 16,
+      });
+    }
+    
+  }, [mapLoaded, isNavigating, routeGeoJson, navigationUserLocation, navigationTarget]);
+
   // Calculate active venues count
   // Heatmap 2.0: Prefer heatmapVenues data if available
   const activeVenueCount = useMemo(() => {
@@ -711,9 +785,61 @@ export function MapView({
   };
 
   return (
-    <div className="flex-1 relative rounded-xl overflow-hidden">
+    <div className={`flex-1 relative rounded-xl overflow-hidden ${isNavigating ? 'navigation-mode-active' : ''}`}>
       {/* Map container */}
       <div ref={mapContainer} className="absolute inset-0" />
+      
+      {/* ============================================
+          NAVIGATION OVERLAY
+          Shows when navigation is active
+          ============================================ */}
+      {isNavigating && (
+        <>
+          {/* Navigation info bar */}
+          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50">
+            <div className="bg-emerald-900/95 backdrop-blur-sm px-6 py-3 rounded-2xl border border-emerald-700/50 shadow-lg">
+              <div className="flex items-center gap-4">
+                {navigationInfo ? (
+                  <>
+                    <span className="text-emerald-100 font-bold text-lg">
+                      {Math.round(navigationInfo.durationSeconds / 60)} min
+                    </span>
+                    <span className="text-emerald-300">•</span>
+                    <span className="text-emerald-200">
+                      {navigationInfo.distanceMeters >= 1000 
+                        ? `${(navigationInfo.distanceMeters / 1000).toFixed(1)} km`
+                        : `${Math.round(navigationInfo.distanceMeters)} m`
+                      }
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-emerald-200">Beregner rute...</span>
+                )}
+              </div>
+              {navigationTarget && (
+                <p className="text-emerald-300/80 text-sm text-center mt-1">
+                  → {navigationTarget.name}
+                </p>
+              )}
+            </div>
+          </div>
+          
+          {/* Exit navigation button */}
+          {onStopNavigation && (
+            <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50">
+              <button
+                onClick={onStopNavigation}
+                className="bg-slate-900/95 hover:bg-slate-800 backdrop-blur-sm px-6 py-3 rounded-xl border border-slate-700/50 shadow-lg text-white font-medium transition-colors flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Avslutt navigasjon
+              </button>
+            </div>
+          )}
+        </>
+      )}
 
       {/* Venues loading indicator */}
       {venuesLoading && (

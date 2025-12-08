@@ -116,6 +116,18 @@ function MainApp({ userId }: MainAppProps) {
   const [lastCheckInVenueId, setLastCheckInVenueId] = useState<string | null>(null);
   const [lastCheckInAt, setLastCheckInAt] = useState<string | null>(null);
   
+  // ============================================
+  // NAVIGATION STATE
+  // ============================================
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [navigationTarget, setNavigationTarget] = useState<Venue | null>(null);
+  const [navigationUserLocation, setNavigationUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [routeGeoJson, setRouteGeoJson] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [navigationInfo, setNavigationInfo] = useState<{
+    distanceMeters: number;
+    durationSeconds: number;
+  } | null>(null);
+  
   // Get user profile for check-in defaults and filter initialization
   const { profile, localPrefs, isLoading: profileLoading } = useProfile();
   
@@ -426,6 +438,128 @@ function MainApp({ userId }: MainAppProps) {
     setSelectedVenueId(null);
   };
 
+  // ============================================
+  // NAVIGATION FUNCTIONS
+  // ============================================
+  
+  /**
+   * Start navigation to a venue
+   */
+  const startNavigationToVenue = useCallback((venue: Venue) => {
+    if (!venue.latitude || !venue.longitude) {
+      console.warn('[Navigation] Venue mangler koordinater, kan ikke starte navigasjon:', venue.name);
+      return;
+    }
+    
+    console.log('[Navigation] Starting navigation to:', venue.name);
+    setNavigationTarget(venue);
+    setIsNavigating(true);
+    setSelectedVenueId(null); // Close venue detail when starting navigation
+  }, []);
+
+  /**
+   * Stop navigation and reset state
+   */
+  const stopNavigation = useCallback(() => {
+    console.log('[Navigation] Stopping navigation');
+    setIsNavigating(false);
+    setNavigationTarget(null);
+    setRouteGeoJson(null);
+    setNavigationInfo(null);
+    setNavigationUserLocation(null);
+  }, []);
+
+  // Watch user position when navigating
+  useEffect(() => {
+    if (!isNavigating) return;
+    
+    if (!navigator.geolocation) {
+      console.warn('[Navigation] Geolocation not supported');
+      return;
+    }
+
+    console.log('[Navigation] Starting geolocation watch');
+    
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        setNavigationUserLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+      },
+      (error) => {
+        console.error('[Navigation] Geolocation error:', error.message);
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 5000,
+        timeout: 20000,
+      }
+    );
+
+    return () => {
+      console.log('[Navigation] Clearing geolocation watch');
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [isNavigating]);
+
+  // Fetch route from Mapbox Directions API
+  useEffect(() => {
+    const fetchRoute = async () => {
+      if (!isNavigating || !navigationUserLocation || !navigationTarget) return;
+      
+      try {
+        const accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
+        if (!accessToken) {
+          console.error('[Navigation] Missing VITE_MAPBOX_TOKEN');
+          return;
+        }
+
+        const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${navigationUserLocation.lng},${navigationUserLocation.lat};${navigationTarget.longitude},${navigationTarget.latitude}?geometries=geojson&overview=full&access_token=${accessToken}`;
+        
+        console.log('[Navigation] Fetching route...');
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+          console.error('[Navigation] Directions API error:', await response.text());
+          return;
+        }
+
+        const data = await response.json();
+        
+        if (!data.routes || !data.routes[0]) {
+          console.warn('[Navigation] No routes returned from Mapbox');
+          return;
+        }
+
+        const route = data.routes[0];
+        
+        const featureCollection: GeoJSON.FeatureCollection = {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              geometry: route.geometry,
+              properties: {},
+            },
+          ],
+        };
+
+        setRouteGeoJson(featureCollection);
+        setNavigationInfo({
+          distanceMeters: route.distance,
+          durationSeconds: route.duration,
+        });
+        
+        console.log('[Navigation] Route loaded:', Math.round(route.distance), 'm,', Math.round(route.duration / 60), 'min');
+      } catch (error) {
+        console.error('[Navigation] Failed to fetch route:', error);
+      }
+    };
+
+    fetchRoute();
+  }, [isNavigating, navigationUserLocation, navigationTarget]);
+
   // Tab configuration
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'map', label: 'Map', icon: <Map size={18} /> },
@@ -500,6 +634,7 @@ function MainApp({ userId }: MainAppProps) {
         onCheckIn={() => handleCheckInFromVenue(selectedVenue.id)}
         canCheckIn={cooldownStatus.allowed}
         nextCheckInTime={cooldownStatus.nextTime}
+        onNavigate={() => startNavigationToVenue(selectedVenue)}
       />
     );
   }
@@ -518,6 +653,13 @@ function MainApp({ userId }: MainAppProps) {
             activeIntents={activeIntents}
             activeAgeBands={activeAgeBands}
             singlesOnly={singlesOnly}
+            // Navigation props
+            isNavigating={isNavigating}
+            navigationTarget={navigationTarget}
+            navigationUserLocation={navigationUserLocation}
+            routeGeoJson={routeGeoJson}
+            navigationInfo={navigationInfo}
+            onStopNavigation={stopNavigation}
           />
         );
 

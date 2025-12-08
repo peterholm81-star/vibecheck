@@ -380,16 +380,35 @@ async function seedDemoData(): Promise<void> {
   // ============================================
   console.log('🗑️  Deleting existing check-ins...');
   
-  const { error: deleteError } = await supabase
-    .from('check_ins')
-    .delete()
-    .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all (neq with impossible id)
-  
-  if (deleteError) {
-    console.error('❌ Error deleting check-ins:', deleteError.message);
+  try {
+    const { data: deleteData, error: deleteError } = await supabase
+      .from('check_ins')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all (neq with impossible id)
+    
+    if (deleteError) {
+      console.error('[seed] Supabase delete error object:', deleteError);
+      console.error('[seed] Error message:', deleteError.message);
+      console.error('[seed] Error code:', deleteError.code);
+      console.error('[seed] Error details:', deleteError.details);
+      console.error('[seed] Error hint:', deleteError.hint);
+      throw deleteError;
+    }
+    
+    console.log('[seed] Delete completed. Response data:', deleteData);
+    console.log('   ✓ Existing check-ins deleted\n');
+  } catch (e: unknown) {
+    console.error('[seed] HARD ERROR deleting check_ins');
+    if (e && typeof e === 'object') {
+      const err = e as { message?: string; stack?: string; cause?: unknown };
+      console.error('Message:', err.message);
+      console.error('Stack:', err.stack);
+      console.error('Cause:', err.cause);
+    } else {
+      console.error('Unknown error:', e);
+    }
     process.exit(1);
   }
-  console.log('   ✓ Existing check-ins deleted\n');
 
   // ============================================
   // STEP 2: Fetch cities

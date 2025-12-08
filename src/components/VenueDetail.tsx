@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { ArrowLeft, MapPin, Users, Zap, Clock, Plus, TrendingUp, Heart, Flame, Sparkles } from 'lucide-react';
+import { ArrowLeft, MapPin, Users, Zap, Clock, Plus, TrendingUp, Heart, Flame, Sparkles, Navigation } from 'lucide-react';
 import type { Venue, CheckIn, VibeScore, Intent } from '../types';
 import {
   VIBE_SCORE_LABELS,
@@ -19,6 +19,7 @@ interface VenueDetailProps {
   onCheckIn: () => void;
   canCheckIn?: boolean;         // Whether user can check in (cooldown passed)
   nextCheckInTime?: string;     // When user can check in again (e.g., "14:30")
+  onNavigate?: () => void;      // Callback to start navigation to this venue
 }
 
 // Day names for peak times display
@@ -78,6 +79,7 @@ export function VenueDetail({
   onCheckIn,
   canCheckIn = true,
   nextCheckInTime,
+  onNavigate,
 }: VenueDetailProps) {
   const [peakTimes, setPeakTimes] = useState<PeakHour[]>([]);
   const [peakTimesLoading, setPeakTimesLoading] = useState(true);
@@ -212,6 +214,17 @@ export function VenueDetail({
                 <MapPin size={16} />
                 <span>{venue.address}</span>
               </div>
+              
+              {/* Navigation button */}
+              {onNavigate && venue.latitude && venue.longitude && (
+                <button
+                  onClick={onNavigate}
+                  className="mt-3 flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                >
+                  <Navigation size={18} />
+                  Ta meg hit
+                </button>
+              )}
             </div>
 
             {/* Activity badge */}

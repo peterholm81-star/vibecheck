@@ -96,3 +96,40 @@
 .mapboxgl-ctrl-logo {
   display: block !important;
 }
+
+/* ============================================
+   NAVIGATION MODE - FULLSCREEN MAP
+   When user is navigating to a venue
+   ============================================ */
+
+.navigation-mode-active {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 1000 !important;
+  border-radius: 0 !important;
+  background: #000;
+}
+
+/* Ensure map fills the container in navigation mode */
+.navigation-mode-active > div:first-child {
+  position: absolute;
+  inset: 0;
+}
+
+/* Navigation pulse animation for user location */
+@keyframes navigation-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.7;
+  }
+}
+
+.navigation-user-marker {
+  animation: navigation-pulse 2s ease-in-out infinite;
+}
