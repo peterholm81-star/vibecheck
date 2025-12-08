@@ -270,8 +270,18 @@ function MainApp({ userId }: MainAppProps) {
   // Note: City/favoriteCity filter could be added here
   // ============================================
   const filteredCheckIns = useMemo(() => {
+    // DEBUG: Log input check-ins count
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[App] state.checkIns count:', state.checkIns.length);
+    }
+
     // Step 1: Filter by time window
     let filtered = filterCheckInsByTime(state.checkIns, timeWindowMinutes);
+    
+    // DEBUG: Log after time filter
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[App] After time filter (', timeWindowMinutes, 'min):', filtered.length);
+    }
     
     // Step 2: Apply singles-only filter if enabled
     // A check-in counts as "single" if relationship_status === 'single'
@@ -290,6 +300,11 @@ function MainApp({ userId }: MainAppProps) {
     // Step 4: Apply intent filter if any are selected
     if (activeIntents.length > 0) {
       filtered = filtered.filter((c) => activeIntents.includes(c.intent));
+    }
+
+    // DEBUG: Log final filtered count
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[App] Final filtered check-ins:', filtered.length);
     }
     
     return filtered;

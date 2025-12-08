@@ -195,6 +195,25 @@ export function VenueList({
 
   // Calculate stats for all venues using shared utility
   const venuesWithStats = useMemo(() => {
+    // DEBUG: Log check-ins matching
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[VenueList] Check-ins received:', checkIns.length);
+      console.log('[VenueList] Venues to match:', searchFilteredVenues.length);
+      
+      // Log first few check-in venue IDs vs venue IDs
+      if (checkIns.length > 0 && searchFilteredVenues.length > 0) {
+        const checkInVenueIds = new Set(checkIns.map(c => c.venueId));
+        const venueIds = new Set(searchFilteredVenues.map(v => v.id));
+        const matching = [...checkInVenueIds].filter(id => venueIds.has(id));
+        console.log('[VenueList] Unique check-in venue IDs:', checkInVenueIds.size);
+        console.log('[VenueList] Matching venue IDs:', matching.length);
+        if (matching.length === 0 && checkInVenueIds.size > 0) {
+          console.warn('[VenueList] WARNING: No check-in venues match displayed venues!');
+          console.log('[VenueList] Sample check-in venueId:', [...checkInVenueIds][0]);
+          console.log('[VenueList] Sample venue id:', [...venueIds][0]);
+        }
+      }
+    }
     return calculateAllVenueStats(searchFilteredVenues, checkIns);
   }, [searchFilteredVenues, checkIns]);
 

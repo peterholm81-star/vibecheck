@@ -213,6 +213,15 @@ export function useVenueHeatmap(): UseVenueHeatmapReturn {
       const venues = (venuesResult.data || []) as VenueRow[];
       const stats = (statsResult.data || []) as VenueStatsRecentRow[];
 
+      // DEBUG: Log fetched data
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[useVenueHeatmap] Venues fetched:', venues.length);
+        console.log('[useVenueHeatmap] Stats from venue_stats_recent:', stats.length);
+        if (stats.length > 0) {
+          console.log('[useVenueHeatmap] First stat:', stats[0]);
+        }
+      }
+
       // Create a map for quick stats lookup
       const statsMap = new Map<string, VenueStatsRecentRow>();
       stats.forEach((s) => statsMap.set(s.venue_id, s));

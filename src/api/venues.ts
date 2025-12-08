@@ -113,6 +113,12 @@ export async function getRecentCheckIns(): Promise<{
       // Fetch last 3 hours of data (max window)
       const threeHoursAgo = new Date(Date.now() - 180 * 60 * 1000).toISOString();
 
+      // DEBUG: Log time filter
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[getRecentCheckIns] Current time (ISO):', new Date().toISOString());
+        console.log('[getRecentCheckIns] Filter cutoff (3h ago):', threeHoursAgo);
+      }
+
       const { data, error } = await supabase
         .from('check_ins')
         .select('*')
@@ -120,6 +126,15 @@ export async function getRecentCheckIns(): Promise<{
         .order('created_at', { ascending: false });
 
       if (error) throw error;
+
+      // DEBUG: Log fetched data
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[getRecentCheckIns] Fetched rows from check_ins:', data?.length ?? 0);
+        if (data && data.length > 0) {
+          console.log('[getRecentCheckIns] First check-in:', data[0].created_at, data[0].venue_id);
+          console.log('[getRecentCheckIns] Last check-in:', data[data.length - 1].created_at);
+        }
+      }
 
       const checkIns: CheckIn[] = (data || []).map((row) => ({
         id: row.id,

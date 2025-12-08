@@ -410,7 +410,17 @@ export function MapView({
   // Generate heatmap data from check-ins based on current mode
   // This is used as fallback/legacy data
   const heatmapData = useMemo(() => {
-    return generateHeatmapData(venues, checkIns, timeWindowMinutes, heatmapMode);
+    const data = generateHeatmapData(venues, checkIns, timeWindowMinutes, heatmapMode);
+    
+    // DEBUG: Log heatmap data generation
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[MapView] Generating heatmap:');
+      console.log('  - Venues:', venues.length);
+      console.log('  - Check-ins:', checkIns.length);
+      console.log('  - Heatmap points:', data.length);
+    }
+    
+    return data;
   }, [venues, checkIns, timeWindowMinutes, heatmapMode]);
   
   // Heatmap 2.0: Convert heatmapVenues to GeoJSON with mode-aware weights
