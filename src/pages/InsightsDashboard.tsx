@@ -448,14 +448,31 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
     });
   }, [venues, selectedCity, searchTerm]);
 
+  // Auto-select first venue from filtered list when current selection is not in filtered list
+  // This ensures the dropdown always shows a valid selection
+  useEffect(() => {
+    if (filteredVenues.length === 0) return;
+    
+    // Check if currently selected venue is in the filtered list
+    const currentInFiltered = selectedVenueId && filteredVenues.some(v => v.id === selectedVenueId);
+    
+    // If not in filtered list, auto-select the first filtered venue
+    if (!currentInFiltered) {
+      setSelectedVenueId(filteredVenues[0].id);
+    }
+  }, [filteredVenues, selectedVenueId]);
+
   // Convert period string to numeric timeRange
   const timeRange = useMemo(() => {
     const found = periodOptions.find(p => p.id === period);
     return found?.days || 30;
   }, [period]);
 
-  // Get selected venue name
-  const selectedVenue = venues.find(v => v.id === selectedVenueId);
+  // Get selected venue object from the full venues list (ensures we always find it by UUID)
+  const selectedVenue = useMemo(() => {
+    return venues.find(v => v.id === selectedVenueId) ?? null;
+  }, [venues, selectedVenueId]);
+  
   const venueName = selectedVenue?.name || 'Velg sted';
 
   const handleRefresh = () => {
@@ -686,7 +703,15 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
           ) : (
             <select
               value={selectedVenueId ?? ''}
-              onChange={(e) => setSelectedVenueId(e.target.value)}
+              onChange={(e) => {
+                const newVenueId = e.target.value;
+                // Find venue in full list to ensure we have the correct UUID
+                const venue = venues.find(v => v.id === newVenueId);
+                if (venue) {
+                  console.log('[Insights] Venue valgt:', venue.name, venue.id);
+                  setSelectedVenueId(venue.id);
+                }
+              }}
               className="bg-[#1a1b2b] border border-neutral-700 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 w-full sm:w-auto sm:min-w-[300px] cursor-pointer"
             >
               {filteredVenues.map((v) => (
