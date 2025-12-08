@@ -6,12 +6,22 @@
  */
 
 /**
- * CityOption for dropdown selectors
- * Used in both ProfileSettings and InsightsDashboard
+ * CityOption for dropdown selectors (uses city name as value)
+ * Used in ProfileSettings for favorite city
  */
 export type CityOption = {
-  value: string;  // City name (used as filter value)
+  value: string;  // City name (used as filter value in ProfileSettings)
   label: string;  // Display label in dropdown
+};
+
+/**
+ * CityOptionById for dropdown selectors (uses city ID as value)
+ * Used in InsightsDashboard for filtering venues by city_id
+ */
+export type CityOptionById = {
+  id: number;     // City ID from cities table
+  value: string;  // String representation of ID for select element
+  label: string;  // Display label in dropdown (city name)
 };
 
 /**
@@ -27,7 +37,8 @@ export const CITY_AUTO_VALUE = 'auto';
 export const CITY_ALL_VALUE = 'all';
 
 /**
- * Convert a City from API to CityOption format
+ * Convert a City from API to CityOption format (uses name as value)
+ * Used in ProfileSettings
  */
 export function toCityOption(city: { name: string }): CityOption {
   return {
@@ -41,5 +52,24 @@ export function toCityOption(city: { name: string }): CityOption {
  */
 export function toCityOptions(cities: Array<{ name: string }>): CityOption[] {
   return cities.map(toCityOption);
+}
+
+/**
+ * Convert a City from API to CityOptionById format (uses ID as value)
+ * Used in InsightsDashboard for venue filtering
+ */
+export function toCityOptionById(city: { id: number; name: string }): CityOptionById {
+  return {
+    id: city.id,
+    value: String(city.id),
+    label: city.name,
+  };
+}
+
+/**
+ * Convert array of cities to CityOptionById array
+ */
+export function toCityOptionsById(cities: Array<{ id: number; name: string }>): CityOptionById[] {
+  return cities.map(toCityOptionById);
 }
 

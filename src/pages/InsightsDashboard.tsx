@@ -10,7 +10,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { ArrowLeft, Calendar, RefreshCw, MapPin, BarChart3, Flame, TrendingUp, Users, Award } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getCities, City } from '../api/cities';
-import { CityOption, CITY_ALL_VALUE, toCityOptions } from '../constants/cities';
+import { CityOptionById, CITY_ALL_VALUE, toCityOptionsById } from '../constants/cities';
 import {
   KPISection,
   TrendGraphSection,
@@ -79,6 +79,7 @@ type VenueOption = {
   id: string;
   name: string;
   city: string | null;
+  city_id: number | null;
 };
 
 // Period options with numeric values
@@ -385,7 +386,7 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
   // ============================================
   const [venues, setVenues] = useState<VenueOption[]>([]);
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
-  const [selectedCity, setSelectedCity] = useState<string>(CITY_ALL_VALUE);
+  const [selectedCityId, setSelectedCityId] = useState<string>(CITY_ALL_VALUE);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoadingVenues, setIsLoadingVenues] = useState<boolean>(true);
   const [venueError, setVenueError] = useState<string | null>(null);
@@ -400,16 +401,18 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
     getCities()
       .then((cities) => {
         setAvailableCities(cities);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[Insights] Loaded cities:', cities.length, cities.map(c => `${c.name}(${c.id})`).join(', '));
+        }
       })
       .catch((err) => {
         console.error('[Insights] Failed to fetch cities:', err);
       });
   }, []);
 
-  // City options for dropdown - uses shared cities from database
-  // Excludes "auto" since that doesn't make sense for filtering
-  const cityOptions: CityOption[] = useMemo(() => {
-    return toCityOptions(availableCities);
+  // City options for dropdown - uses city ID as value for filtering
+  const cityOptions: CityOptionById[] = useMemo(() => {
+    return toCityOptionsById(availableCities);
   }, [availableCities]);
 
   // Fetch venues from Supabase on mount
@@ -420,7 +423,7 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
 
       const { data, error } = await supabase
         .from('venues')
-        .select('id, name, city')
+        .select('id, name, city, city_id')
         .order('city', { ascending: true })
         .order('name', { ascending: true });
 
@@ -434,6 +437,17 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
       const typedData = (data ?? []) as VenueOption[];
       setVenues(typedData);
 
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Insights] Loaded venues:', typedData.length);
+        // Log city_id distribution
+        const cityIdCounts = typedData.reduce((acc, v) => {
+          const key = v.city_id ?? 'null';
+          acc[key] = (acc[key] || 0) + 1;
+          return acc;
+        }, {} as Record<string | number, number>);
+        console.log('[Insights] Venues per city_id:', cityIdCounts);
+      }
+
       // Velg første venue som default hvis ingen er valgt
       if (typedData.length > 0) {
         setSelectedVenueId(typedData[0].id);
@@ -445,20 +459,21 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
     fetchVenues();
   }, []);
 
-  // Filtered venues based on city and search term
+  // Filtered venues based on city_id and search term
   const filteredVenues = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
+    const cityIdNum = selectedCityId !== CITY_ALL_VALUE ? parseInt(selectedCityId, 10) : null;
 
-    return venues.filter((v) => {
-      // City filter: case-insensitive comparison
+    const filtered = venues.filter((v) => {
+      // City filter: compare by city_id (number)
       const matchesCity =
-        selectedCity === CITY_ALL_VALUE ||
-        !selectedCity ||
-        v.city?.toLowerCase() === selectedCity.toLowerCase();
+        selectedCityId === CITY_ALL_VALUE ||
+        !selectedCityId ||
+        (cityIdNum !== null && v.city_id === cityIdNum);
 
       if (!matchesCity) return false;
 
-      // Search filter: matches name or city
+      // Search filter: matches name or city name (case-insensitive)
       const matchesSearch =
         term.length === 0 ||
         v.name.toLowerCase().includes(term) ||
@@ -466,7 +481,13 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
 
       return matchesSearch;
     });
-  }, [venues, selectedCity, searchTerm]);
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Insights] Filtering: cityId=${selectedCityId}, search="${term}" → ${filtered.length}/${venues.length} venues`);
+    }
+
+    return filtered;
+  }, [venues, selectedCityId, searchTerm]);
 
   // Auto-select first venue from filtered list when current selection is not in filtered list
   // This ensures the dropdown always shows a valid selection
@@ -494,6 +515,32 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
   }, [venues, selectedVenueId]);
   
   const venueName = selectedVenue?.name || 'Velg sted';
+
+  // Handler for selecting a venue - always looks up from full venues list
+  const handleSelectVenue = (venueId: string | null) => {
+    if (!venueId) {
+      setSelectedVenueId(null);
+      return;
+    }
+    
+    // Find venue in full list to ensure we have the correct UUID
+    const venue = venues.find(v => v.id === venueId);
+    if (venue) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Insights] handleSelectVenue:', venue.name, venue.id, 'city_id:', venue.city_id);
+      }
+      setSelectedVenueId(venue.id);
+    }
+  };
+
+  // Handler for city change with logging
+  const handleCityChange = (newCityId: string) => {
+    if (process.env.NODE_ENV === 'development') {
+      const cityName = cityOptions.find(c => c.value === newCityId)?.label ?? 'Alle byer';
+      console.log('[Insights] City changed:', newCityId, cityName);
+    }
+    setSelectedCityId(newCityId);
+  };
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -690,8 +737,8 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
           {/* By-filter + søkefelt */}
           <div className="flex flex-col sm:flex-row gap-3 mb-4">
             <select
-              value={selectedCity}
-              onChange={(e) => setSelectedCity(e.target.value)}
+              value={selectedCityId}
+              onChange={(e) => handleCityChange(e.target.value)}
               className="bg-[#1a1b2b] border border-neutral-700 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30"
             >
               <option value={CITY_ALL_VALUE}>Alle byer</option>
@@ -723,15 +770,7 @@ function InsightsDashboardContent({ onBack }: InsightsDashboardProps) {
           ) : (
             <select
               value={selectedVenueId ?? ''}
-              onChange={(e) => {
-                const newVenueId = e.target.value;
-                // Find venue in full list to ensure we have the correct UUID
-                const venue = venues.find(v => v.id === newVenueId);
-                if (venue) {
-                  console.log('[Insights] Venue valgt:', venue.name, venue.id);
-                  setSelectedVenueId(venue.id);
-                }
-              }}
+              onChange={(e) => handleSelectVenue(e.target.value)}
               className="bg-[#1a1b2b] border border-neutral-700 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 w-full sm:w-auto sm:min-w-[300px] cursor-pointer"
             >
               {filteredVenues.map((v) => (
