@@ -254,6 +254,11 @@ interface MapViewProps {
   routeGeoJson?: GeoJSON.FeatureCollection | null;
   navigationInfo?: { distanceMeters: number; durationSeconds: number } | null;
   onStopNavigation?: () => void;
+  // Arrival detection props
+  navigationArrivalState?: 'idle' | 'ready' | 'shown' | 'done';
+  onArrivalPromptShown?: () => void;
+  onDismissArrivalPrompt?: () => void;
+  onConfirmArrivalCheckIn?: () => void;
 }
 
 export function MapView({ 
@@ -272,6 +277,11 @@ export function MapView({
   routeGeoJson = null,
   navigationInfo = null,
   onStopNavigation,
+  // Arrival detection props
+  navigationArrivalState = 'idle',
+  onArrivalPromptShown,
+  onDismissArrivalPrompt,
+  onConfirmArrivalCheckIn,
 }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -759,6 +769,16 @@ export function MapView({
     
   }, [mapLoaded, isNavigating, routeGeoJson, navigationUserLocation, navigationTarget]);
 
+  // ============================================
+  // ARRIVAL PROMPT - Trigger when ready
+  // ============================================
+  useEffect(() => {
+    if (!isNavigating) return;
+    if (navigationArrivalState === 'ready') {
+      onArrivalPromptShown?.();
+    }
+  }, [isNavigating, navigationArrivalState, onArrivalPromptShown]);
+
   // Calculate active venues count
   // Heatmap 2.0: Prefer heatmapVenues data if available
   const activeVenueCount = useMemo(() => {
@@ -840,7 +860,7 @@ export function MapView({
           </div>
           
           {/* Exit navigation button */}
-          {onStopNavigation && (
+          {onStopNavigation && navigationArrivalState !== 'shown' && (
             <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50">
               <button
                 onClick={onStopNavigation}
@@ -851,6 +871,35 @@ export function MapView({
                 </svg>
                 Avslutt navigasjon
               </button>
+            </div>
+          )}
+          
+          {/* Arrival prompt popup */}
+          {navigationTarget && navigationArrivalState === 'shown' && (
+            <div className="navigation-arrival-modal">
+              <div className="navigation-arrival-modal__content">
+                <p className="text-white text-sm text-center">
+                  Du er fremme på <strong className="text-emerald-400">{navigationTarget.name}</strong>
+                  <br />
+                  <span className="text-slate-300">Vil du sjekke inn?</span>
+                </p>
+                <div className="navigation-arrival-modal__buttons">
+                  <button
+                    type="button"
+                    onClick={onDismissArrivalPrompt}
+                    className="px-4 py-2 text-sm text-slate-300 hover:text-white transition-colors"
+                  >
+                    Ikke nå
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onConfirmArrivalCheckIn}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    Sjekk inn nå
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </>

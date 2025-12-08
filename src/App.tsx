@@ -128,6 +128,9 @@ function MainApp({ userId }: MainAppProps) {
     durationSeconds: number;
   } | null>(null);
   
+  // Arrival detection state: idle → ready → shown → done
+  const [navigationArrivalState, setNavigationArrivalState] = useState<'idle' | 'ready' | 'shown' | 'done'>('idle');
+  
   // Get user profile for check-in defaults and filter initialization
   const { profile, localPrefs, isLoading: profileLoading } = useProfile();
   
@@ -455,6 +458,7 @@ function MainApp({ userId }: MainAppProps) {
     setNavigationTarget(venue);
     setIsNavigating(true);
     setSelectedVenueId(null); // Close venue detail when starting navigation
+    setNavigationArrivalState('idle'); // Reset arrival state for new navigation
     setActiveTab('map'); // Switch to map tab to show fullscreen navigation
   }, []);
 
@@ -468,6 +472,7 @@ function MainApp({ userId }: MainAppProps) {
     setRouteGeoJson(null);
     setNavigationInfo(null);
     setNavigationUserLocation(null);
+    setNavigationArrivalState('done'); // Ensure popup doesn't show after stopping
   }, []);
 
   // Watch user position when navigating
@@ -560,6 +565,73 @@ function MainApp({ userId }: MainAppProps) {
 
     fetchRoute();
   }, [isNavigating, navigationUserLocation, navigationTarget]);
+
+  // ============================================
+  // ARRIVAL DETECTION
+  // ============================================
+  
+  /**
+   * Calculate distance in meters between two coordinates (Haversine formula)
+   */
+  const getDistanceMeters = (
+    a: { lat: number; lng: number },
+    b: { lat: number; lng: number }
+  ): number => {
+    const R = 6371000; // Earth's radius in meters
+    const toRad = (value: number) => (value * Math.PI) / 180;
+
+    const dLat = toRad(b.lat - a.lat);
+    const dLng = toRad(b.lng - a.lng);
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+
+    const sinDLat = Math.sin(dLat / 2);
+    const sinDLng = Math.sin(dLng / 2);
+
+    const aa = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
+    const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+
+    return R * c;
+  };
+
+  // Detect arrival at navigation target
+  useEffect(() => {
+    if (!isNavigating || !navigationTarget || !navigationUserLocation) return;
+    if (navigationArrivalState === 'done') return;
+
+    const distance = getDistanceMeters(
+      { lat: navigationUserLocation.lat, lng: navigationUserLocation.lng },
+      { lat: navigationTarget.latitude!, lng: navigationTarget.longitude! }
+    );
+
+    const ARRIVAL_THRESHOLD_METERS = 35;
+
+    if (distance <= ARRIVAL_THRESHOLD_METERS && navigationArrivalState === 'idle') {
+      console.log('[Navigation] Arrived at destination! Distance:', Math.round(distance), 'm');
+      setNavigationArrivalState('ready');
+    }
+  }, [isNavigating, navigationTarget, navigationUserLocation, navigationArrivalState]);
+
+  // Arrival prompt callbacks
+  const handleArrivalPromptShown = useCallback(() => {
+    setNavigationArrivalState((prev) => (prev === 'ready' ? 'shown' : prev));
+  }, []);
+
+  const handleDismissArrivalPrompt = useCallback(() => {
+    console.log('[Navigation] User dismissed arrival prompt');
+    setNavigationArrivalState('done');
+  }, []);
+
+  const handleConfirmArrivalCheckIn = useCallback(() => {
+    if (!navigationTarget) return;
+    
+    console.log('[Navigation] User confirmed check-in at arrival');
+    
+    // Use existing check-in flow: set preselected venue and switch to check-in tab
+    setPreselectedVenueId(navigationTarget.id);
+    stopNavigation();
+    setActiveTab('checkin');
+  }, [navigationTarget, stopNavigation]);
 
   // Tab configuration
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
@@ -661,6 +733,11 @@ function MainApp({ userId }: MainAppProps) {
             routeGeoJson={routeGeoJson}
             navigationInfo={navigationInfo}
             onStopNavigation={stopNavigation}
+            // Arrival detection props
+            navigationArrivalState={navigationArrivalState}
+            onArrivalPromptShown={handleArrivalPromptShown}
+            onDismissArrivalPrompt={handleDismissArrivalPrompt}
+            onConfirmArrivalCheckIn={handleConfirmArrivalCheckIn}
           />
         );
 
