@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { User, Save, CheckCircle, MapPin, Heart, Zap, AlertCircle, RefreshCw, MapPinOff, Bell } from 'lucide-react';
+import { User, Save, CheckCircle, MapPin, Heart, Zap, AlertCircle, RefreshCw, MapPinOff, Bell, MessageSquare } from 'lucide-react';
 import { ShareVibeCheckButton } from './ShareVibeCheckButton';
+import { FeedbackModal } from './FeedbackModal';
 import {
   useProfile,
   GENDER_OPTIONS,
@@ -69,6 +70,9 @@ export function ProfileSettings() {
   
   // Geolocation permission state (for smart check-in warning)
   const [geoPermission, setGeoPermission] = useState<'prompt' | 'granted' | 'denied' | 'unavailable'>('prompt');
+  
+  // Feedback modal state
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 
   // ============================================
   // CHECK GEOLOCATION PERMISSION
@@ -565,6 +569,23 @@ export function ProfileSettings() {
             </p>
             <ShareVibeCheckButton />
           </div>
+
+          {/* ============================================
+              FEEDBACK BUTTON
+              ============================================ */}
+          <div className="pt-4 border-t border-slate-700/50">
+            <p className="text-sm text-slate-400 mb-3 text-center">
+              Har du tilbakemeldinger? 💬
+            </p>
+            <button
+              type="button"
+              onClick={() => setIsFeedbackOpen(true)}
+              className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-6 py-3 rounded-xl font-medium transition-colors"
+            >
+              <MessageSquare size={18} />
+              Gi tilbakemelding 📝
+            </button>
+          </div>
         </div>
 
         {/* Footer info */}
@@ -572,6 +593,12 @@ export function ProfileSettings() {
           Profildata lagres sikkert i Supabase.
         </p>
       </div>
+
+      {/* Feedback Modal */}
+      <FeedbackModal
+        isOpen={isFeedbackOpen}
+        onClose={() => setIsFeedbackOpen(false)}
+      />
     </div>
   );
 }

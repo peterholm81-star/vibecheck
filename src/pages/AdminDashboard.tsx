@@ -8,7 +8,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Users, UserPlus, Activity, RefreshCw, AlertCircle, MapPin, Download, LogOut, CheckCircle, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Users, UserPlus, Activity, RefreshCw, AlertCircle, MapPin, Download, LogOut, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
 import { getCitiesWithRadius, CityWithRadius } from '../api/cities';
 import { refreshVenuesForCity } from '../api/venues';
 import { getCityRadius } from '../config/cityRadius';
@@ -21,6 +21,10 @@ import {
   type BatchApiResponse,
   type ErrorSeverity,
 } from '../utils/adminErrorMapper';
+import { AdminFeedbackPanel } from '../components/admin/AdminFeedbackPanel';
+
+// Admin section type
+type AdminSection = 'users' | 'feedback';
 
 interface UserStats {
   totalUsers: number;
@@ -147,12 +151,18 @@ function VenuesRefreshSection({ adminPin }: VenuesRefreshSectionProps) {
           setRadiusKm(list[0].suggested_radius_km);
         } else {
           console.warn('[VenuesRefreshSection] No cities returned from getCitiesWithRadius');
-          setErrorMessage("Ingen byer funnet. Sjekk at cities-tabellen er seeded og har RLS-policy.");
+          setStatusMessage({
+            text: "Ingen byer funnet. Sjekk at cities-tabellen er seeded og har RLS-policy.",
+            severity: 'error',
+          });
         }
       } catch (error) {
         console.error('[VenuesRefreshSection] Error fetching cities:', error);
         const errorMsg = error instanceof Error ? error.message : String(error);
-        setErrorMessage(`Kunne ikke hente byliste: ${errorMsg}`);
+        setStatusMessage({
+          text: `Kunne ikke hente byliste: ${errorMsg}`,
+          severity: 'error',
+        });
       } finally {
         setLoadingCities(false);
       }
@@ -529,6 +539,7 @@ function DashboardContent({ onBack, onLogout, adminPin }: DashboardContentProps)
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [activeSection, setActiveSection] = useState<AdminSection>('users');
 
   const fetchStats = useCallback(async () => {
     console.log('[AdminDashboard] Fetching stats from /api/admin-stats...');
@@ -653,13 +664,43 @@ function DashboardContent({ onBack, onLogout, adminPin }: DashboardContentProps)
                 <h2 className="text-base font-semibold text-white">Innsikt</h2>
                 <p className="text-xs text-slate-500 mt-1">Velg fokusområde</p>
               </div>
-              <nav>
-                <button className="w-full text-left px-3 py-3 rounded-xl bg-violet-500/15 border-l-2 border-violet-400">
+              <nav className="space-y-2">
+                {/* Users section */}
+                <button
+                  onClick={() => setActiveSection('users')}
+                  className={`w-full text-left px-3 py-3 rounded-xl transition-colors ${
+                    activeSection === 'users'
+                      ? 'bg-violet-500/15 border-l-2 border-violet-400'
+                      : 'hover:bg-slate-800/50 border-l-2 border-transparent'
+                  }`}
+                >
                   <div className="flex items-center gap-3">
-                    <Users size={18} className="text-violet-400" />
+                    <Users size={18} className={activeSection === 'users' ? 'text-violet-400' : 'text-slate-400'} />
                     <div>
-                      <p className="text-sm font-medium text-white">Brukere</p>
+                      <p className={`text-sm font-medium ${activeSection === 'users' ? 'text-white' : 'text-slate-300'}`}>
+                        Brukere
+                      </p>
                       <p className="text-xs text-slate-400">Brukerstatistikk</p>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Feedback section */}
+                <button
+                  onClick={() => setActiveSection('feedback')}
+                  className={`w-full text-left px-3 py-3 rounded-xl transition-colors ${
+                    activeSection === 'feedback'
+                      ? 'bg-violet-500/15 border-l-2 border-violet-400'
+                      : 'hover:bg-slate-800/50 border-l-2 border-transparent'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <MessageSquare size={18} className={activeSection === 'feedback' ? 'text-violet-400' : 'text-slate-400'} />
+                    <div>
+                      <p className={`text-sm font-medium ${activeSection === 'feedback' ? 'text-white' : 'text-slate-300'}`}>
+                        Feedback
+                      </p>
+                      <p className="text-xs text-slate-400">Tilbakemeldinger</p>
                     </div>
                   </div>
                 </button>
@@ -669,52 +710,59 @@ function DashboardContent({ onBack, onLogout, adminPin }: DashboardContentProps)
 
           {/* Main Content */}
           <main className="flex-1 min-w-0">
-            {/* Section Header */}
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold text-white">Brukerinnsikt</h2>
-              <p className="text-sm text-slate-500 mt-1">
-                Nøkkeltall for VibeCheck-brukere
-              </p>
-            </div>
+            {activeSection === 'users' ? (
+              <>
+                {/* Section Header */}
+                <div className="mb-6">
+                  <h2 className="text-xl font-semibold text-white">Brukerinnsikt</h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Nøkkeltall for VibeCheck-brukere
+                  </p>
+                </div>
 
-            {/* Error State */}
-            {error && (
-              <div className="mb-6 p-4 bg-red-900/20 border border-red-800/50 rounded-xl flex items-center gap-3">
-                <AlertCircle size={20} className="text-red-400 flex-shrink-0" />
-                <p className="text-sm text-red-300">{error}</p>
-              </div>
+                {/* Error State */}
+                {error && (
+                  <div className="mb-6 p-4 bg-red-900/20 border border-red-800/50 rounded-xl flex items-center gap-3">
+                    <AlertCircle size={20} className="text-red-400 flex-shrink-0" />
+                    <p className="text-sm text-red-300">{error}</p>
+                  </div>
+                )}
+
+                {/* Stats Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+                  <StatsCard
+                    title="Totalt antall brukere"
+                    value={stats?.totalUsers ?? null}
+                    icon={<Users size={24} />}
+                    color="violet"
+                    subtitle="Alle registrerte"
+                    isLoading={isLoading}
+                  />
+                  <StatsCard
+                    title="Nye siste 24 timer"
+                    value={stats?.newLast24h ?? null}
+                    icon={<UserPlus size={24} />}
+                    color="emerald"
+                    subtitle="Siden i går"
+                    isLoading={isLoading}
+                  />
+                  <StatsCard
+                    title="Aktive siste 10 min"
+                    value={stats?.activeLast10min ?? null}
+                    icon={<Activity size={24} />}
+                    color="sky"
+                    subtitle="Online nå"
+                    isLoading={isLoading}
+                  />
+                </div>
+
+                {/* Venues Refresh Section */}
+                <VenuesRefreshSection adminPin={adminPin} />
+              </>
+            ) : (
+              /* Feedback Section */
+              <AdminFeedbackPanel adminPin={adminPin} />
             )}
-
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-              <StatsCard
-                title="Totalt antall brukere"
-                value={stats?.totalUsers ?? null}
-                icon={<Users size={24} />}
-                color="violet"
-                subtitle="Alle registrerte"
-                isLoading={isLoading}
-              />
-              <StatsCard
-                title="Nye siste 24 timer"
-                value={stats?.newLast24h ?? null}
-                icon={<UserPlus size={24} />}
-                color="emerald"
-                subtitle="Siden i går"
-                isLoading={isLoading}
-              />
-              <StatsCard
-                title="Aktive siste 10 min"
-                value={stats?.activeLast10min ?? null}
-                icon={<Activity size={24} />}
-                color="sky"
-                subtitle="Online nå"
-                isLoading={isLoading}
-              />
-            </div>
-
-            {/* Venues Refresh Section */}
-            <VenuesRefreshSection adminPin={adminPin} />
 
             {/* Footer */}
             <footer className="mt-16 pt-8 border-t border-neutral-800/50">
@@ -722,7 +770,7 @@ function DashboardContent({ onBack, onLogout, adminPin }: DashboardContentProps)
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                   <span className="text-sm text-slate-500">
-                    Oppdateres hvert 30. sekund
+                    {activeSection === 'users' ? 'Oppdateres hvert 30. sekund' : 'Klikk på en rad for detaljer'}
                   </span>
                 </div>
               </div>
