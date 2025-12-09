@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { User, Save, CheckCircle, MapPin, Heart, Zap, AlertCircle, RefreshCw, MapPinOff, Bell } from 'lucide-react';
+import { ShareVibeCheckButton } from './ShareVibeCheckButton';
 import {
   useProfile,
   GENDER_OPTIONS,
@@ -553,6 +554,16 @@ export function ProfileSettings() {
                 </>
               )}
             </button>
+          </div>
+
+          {/* ============================================
+              SHARE VIBECHECK
+              ============================================ */}
+          <div className="pt-4 border-t border-slate-700/50">
+            <p className="text-sm text-slate-400 mb-3 text-center">
+              Liker du VibeCheck? Hjelp oss å vokse! 🚀
+            </p>
+            <ShareVibeCheckButton />
           </div>
         </div>
 
