@@ -827,50 +827,70 @@ export function MapView({
       {/* ============================================
           NAVIGATION OVERLAY
           Shows when navigation is active
+          Clean navigation UI: exit button top-left, X button top-right
           ============================================ */}
       {isNavigating && (
         <>
-          {/* Navigation info bar */}
-          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50">
-            <div className="bg-emerald-900/95 backdrop-blur-sm px-6 py-3 rounded-2xl border border-emerald-700/50 shadow-lg">
-              <div className="flex items-center gap-4">
-                {navigationInfo ? (
-                  <>
-                    <span className="text-emerald-100 font-bold text-lg">
-                      {Math.round(navigationInfo.durationSeconds / 60)} min
-                    </span>
-                    <span className="text-emerald-300">•</span>
-                    <span className="text-emerald-200">
-                      {navigationInfo.distanceMeters >= 1000 
-                        ? `${(navigationInfo.distanceMeters / 1000).toFixed(1)} km`
-                        : `${Math.round(navigationInfo.distanceMeters)} m`
-                      }
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-emerald-200">Beregner rute...</span>
-                )}
-              </div>
-              {navigationTarget && (
-                <p className="text-emerald-300/80 text-sm text-center mt-1">
-                  → {navigationTarget.name}
-                </p>
-              )}
-            </div>
-          </div>
-          
-          {/* Exit navigation button */}
+          {/* Navigation controls - positioned at top for easy access */}
           {onStopNavigation && navigationArrivalState !== 'shown' && (
-            <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50">
-              <button
-                onClick={onStopNavigation}
-                className="bg-slate-900/95 hover:bg-slate-800 backdrop-blur-sm px-6 py-3 rounded-xl border border-slate-700/50 shadow-lg text-white font-medium transition-colors flex items-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                Avslutt navigasjon
-              </button>
+            <div className="absolute top-0 left-0 right-0 z-50">
+              {/* Safe area padding for iOS notch */}
+              <div className="flex items-start justify-between p-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+                {/* Exit navigation button - top left */}
+                <button
+                  onClick={onStopNavigation}
+                  className="bg-slate-900/95 hover:bg-slate-800 backdrop-blur-sm px-4 py-2.5 rounded-xl border border-slate-700/50 shadow-lg text-white font-medium transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                  Avslutt
+                </button>
+                
+                {/* Navigation info - center (only shows when route calculated) */}
+                {navigationInfo ? (
+                  <div className="bg-emerald-900/95 backdrop-blur-sm px-4 py-2 rounded-xl border border-emerald-700/50 shadow-lg">
+                    <div className="flex items-center gap-3">
+                      <span className="text-emerald-100 font-bold">
+                        {Math.round(navigationInfo.durationSeconds / 60)} min
+                      </span>
+                      <span className="text-emerald-500">•</span>
+                      <span className="text-emerald-200">
+                        {navigationInfo.distanceMeters >= 1000 
+                          ? `${(navigationInfo.distanceMeters / 1000).toFixed(1)} km`
+                          : `${Math.round(navigationInfo.distanceMeters)} m`
+                        }
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-slate-900/80 backdrop-blur-sm px-4 py-2 rounded-xl">
+                    <span className="text-slate-300 text-sm">Beregner rute...</span>
+                  </div>
+                )}
+                
+                {/* X button - top right */}
+                <button
+                  onClick={onStopNavigation}
+                  className="w-10 h-10 bg-slate-900/95 hover:bg-red-600 backdrop-blur-sm rounded-full border border-slate-700/50 shadow-lg flex items-center justify-center transition-colors"
+                  title="Lukk navigasjon"
+                >
+                  <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              {/* Destination name - below controls */}
+              {navigationTarget && (
+                <div className="flex justify-center -mt-1 pb-2">
+                  <div className="bg-slate-900/80 backdrop-blur-sm px-3 py-1.5 rounded-full">
+                    <p className="text-white text-sm font-medium">
+                      → {navigationTarget.name}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           
@@ -949,74 +969,82 @@ export function MapView({
       {/* ============================================
           RESPONSIVE MAP OVERLAYS
           Shows different UI on mobile vs desktop
+          HIDDEN during navigation mode to keep map clean
           ============================================ */}
-
-      {isMobile ? (
+      {!isNavigating && (
         <>
-          {/* MOBILE LAYOUT */}
-          
-          {/* Top bar with city name and stats */}
-          <MobileTopBar
-            cityName={effectiveCityName}
-            activeVenueCount={activeVenueCount}
-            totalCheckins={totalRecentCheckins || checkIns.length}
-            isLoading={heatmapLoading}
-          />
+          {isMobile ? (
+            <>
+              {/* MOBILE LAYOUT */}
+              
+              {/* TODO: MobileTopBar temporarily hidden to reduce map clutter
+              <MobileTopBar
+                cityName={effectiveCityName}
+                activeVenueCount={activeVenueCount}
+                totalCheckins={totalRecentCheckins || checkIns.length}
+                isLoading={heatmapLoading}
+              />
+              */}
 
-          {/* Notification toggle button (top right) */}
-          <LiveAlertsToggle
-            isActive={!!activeSessionId}
-            isLoading={isActivating || isDeactivating}
-            isDisabled={!profile?.allowNotifications}
-            onToggle={handleMobileNotificationToggle}
-          />
+              {/* Notification toggle button (top right) - kept visible */}
+              <LiveAlertsToggle
+                isActive={!!activeSessionId}
+                isLoading={isActivating || isDeactivating}
+                isDisabled={!profile?.allowNotifications}
+                onToggle={handleMobileNotificationToggle}
+              />
 
-          {/* ONS mode indicator (small pill, bottom right) */}
-          <OnsIndicator heatmapMode={heatmapMode} />
+              {/* ONS mode indicator (small pill, bottom right) */}
+              <OnsIndicator heatmapMode={heatmapMode} />
 
-          {/* Info button (bottom left, above Mapbox logo) */}
-          <InfoButton
-            cityName={effectiveCityName}
-            activeVenueCount={activeVenueCount}
-            totalCheckins={totalRecentCheckins || checkIns.length}
-            heatmapMode={heatmapMode}
-            hasFavoriteCity={localPrefs.favoriteCity !== 'auto'}
-          />
-        </>
-      ) : (
-        <>
-          {/* DESKTOP LAYOUT - Original full-featured panels */}
-          
-          {/* City info box (top left) */}
-          <DesktopCityInfo
-            cityName={effectiveCityName}
-            activeVenueCount={activeVenueCount}
-            totalCheckins={totalRecentCheckins || checkIns.length}
-            isLoading={heatmapLoading}
-            hasFavoriteCity={localPrefs.favoriteCity !== 'auto'}
-          />
+              {/* TODO: InfoButton temporarily hidden to reduce map clutter
+              <InfoButton
+                cityName={effectiveCityName}
+                activeVenueCount={activeVenueCount}
+                totalCheckins={totalRecentCheckins || checkIns.length}
+                heatmapMode={heatmapMode}
+                hasFavoriteCity={localPrefs.favoriteCity !== 'auto'}
+              />
+              */}
+            </>
+          ) : (
+            <>
+              {/* DESKTOP LAYOUT - Original full-featured panels */}
+              
+              {/* TODO: DesktopCityInfo temporarily hidden to reduce map clutter
+              <DesktopCityInfo
+                cityName={effectiveCityName}
+                activeVenueCount={activeVenueCount}
+                totalCheckins={totalRecentCheckins || checkIns.length}
+                isLoading={heatmapLoading}
+                hasFavoriteCity={localPrefs.favoriteCity !== 'auto'}
+              />
+              */}
 
-          {/* Live notifications panel (top right) */}
-          <DesktopLiveAlertsPanel
-            isActive={!!activeSessionId}
-            isActivating={isActivating}
-            isDeactivating={isDeactivating}
-            isNotificationsEnabled={!!profile?.allowNotifications}
-            error={notificationError}
-            onToggle={handleNotificationToggle}
-          />
+              {/* Live notifications panel (top right) - kept visible */}
+              <DesktopLiveAlertsPanel
+                isActive={!!activeSessionId}
+                isActivating={isActivating}
+                isDeactivating={isDeactivating}
+                isNotificationsEnabled={!!profile?.allowNotifications}
+                error={notificationError}
+                onToggle={handleNotificationToggle}
+              />
 
-          {/* Legend (bottom left) */}
-          <DesktopLegend heatmapMode={heatmapMode} />
+              {/* Legend (bottom left) */}
+              <DesktopLegend heatmapMode={heatmapMode} />
 
-          {/* Info button (bottom left, above legend) */}
-          <InfoButton
-            cityName={effectiveCityName}
-            activeVenueCount={activeVenueCount}
-            totalCheckins={totalRecentCheckins || checkIns.length}
-            heatmapMode={heatmapMode}
-            hasFavoriteCity={localPrefs.favoriteCity !== 'auto'}
-          />
+              {/* TODO: InfoButton temporarily hidden to reduce map clutter
+              <InfoButton
+                cityName={effectiveCityName}
+                activeVenueCount={activeVenueCount}
+                totalCheckins={totalRecentCheckins || checkIns.length}
+                heatmapMode={heatmapMode}
+                hasFavoriteCity={localPrefs.favoriteCity !== 'auto'}
+              />
+              */}
+            </>
+          )}
         </>
       )}
 
