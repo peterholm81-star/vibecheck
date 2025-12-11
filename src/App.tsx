@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Map, List, PlusCircle, RefreshCw, AlertCircle, User, Heart, Activity, Users, Sparkles, Search } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
-import { LoginPage } from './pages/LoginPage';
+import { ensureAnonymousUser } from './lib/auth/ensureAnonymousUser';
+// LoginPage kept for potential admin use: import { LoginPage } from './pages/LoginPage';
 import { AdminApp } from './apps/AdminApp';
 import { InsightsApp } from './apps/InsightsApp';
 import { getVenues, getRecentCheckIns } from './api';
@@ -1115,9 +1116,24 @@ function isOnboardingRoute(): boolean {
   return window.location.pathname === '/onboarding';
 }
 
+// ============================================
+// APP COMPONENT
+// ============================================
+// Anonymous Auth Flow:
+// 1. App starts → ensureAnonymousUser() creates/retrieves anonymous Supabase user
+// 2. Once authReady → check onboarding status
+// 3. If not onboarded → show OnboardingPage
+// 4. If onboarded → show MainApp (map/heatmap)
+// No login required for regular users!
+// ============================================
+
 function App() {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Anonymous auth state
+  const [authReady, setAuthReady] = useState(false);
+  const [authError, setAuthError] = useState<Error | null>(null);
   
   // Onboarding 2.0 state - null until checked
   const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null);
@@ -1184,35 +1200,68 @@ function App() {
     window.history.pushState({}, '', '/');
   };
 
+  // Initialize anonymous auth on app start
+  // This ensures we always have a Supabase user (anonymous or authenticated)
   useEffect(() => {
-    // Check if Supabase is configured
-    if (!supabase) {
-      // If not configured, skip auth and show MainApp directly
-      setLoading(false);
-      setUser({ id: 'mock-user' } as SupabaseUser); // Mock user for development
-      return;
+    let isMounted = true;
+
+    async function initAuth() {
+      // Check if Supabase is configured
+      if (!supabase) {
+        // If not configured, skip auth and show MainApp directly
+        console.warn('[App] Supabase not configured, using mock user');
+        if (isMounted) {
+          setUser({ id: 'mock-user' } as SupabaseUser);
+          setAuthReady(true);
+          setLoading(false);
+        }
+        return;
+      }
+
+      // DEV: Allow bypassing auth with ?devbypass=true in URL
+      const urlParams = new URLSearchParams(window.location.search);
+      if (import.meta.env.DEV && urlParams.get('devbypass') === 'true') {
+        console.log('[App] Dev bypass enabled');
+        if (isMounted) {
+          setUser({ id: 'dev-user' } as SupabaseUser);
+          setAuthReady(true);
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        // Ensure we have an anonymous user (or existing authenticated user)
+        const anonymousUser = await ensureAnonymousUser();
+        
+        if (isMounted) {
+          setUser(anonymousUser);
+          setAuthReady(true);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('[App] Failed to initialize anonymous auth:', err);
+        if (isMounted) {
+          setAuthError(err instanceof Error ? err : new Error('Unknown auth error'));
+          setAuthReady(true); // Still mark as ready so we can show error UI
+          setLoading(false);
+        }
+      }
     }
 
-    // DEV: Allow bypassing auth with ?devbypass=true in URL
-    const urlParams = new URLSearchParams(window.location.search);
-    if (import.meta.env.DEV && urlParams.get('devbypass') === 'true') {
-      setLoading(false);
-      setUser({ id: 'dev-user' } as SupabaseUser);
-      return;
-    }
+    initAuth();
 
-    // Get current user
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user ?? null);
-      setLoading(false);
-    });
-
-    // Listen for auth state changes
+    // Listen for auth state changes (handles session refresh, logout, etc.)
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      if (isMounted) {
+        setUser(session?.user ?? null);
+      }
     });
 
-    return () => listener.subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   // Show admin dashboard if on /admin route
@@ -1227,7 +1276,43 @@ function App() {
     return <InsightsApp />;
   }
 
-  // Vent på at vi har sjekket onboarding-status
+  // Auth error - show friendly error message
+  if (authError) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="text-center max-w-md">
+          <AlertCircle size={48} className="mx-auto text-red-400 mb-4" />
+          <h1 className="text-xl font-bold text-white mb-2">Noe gikk galt</h1>
+          <p className="text-slate-400 mb-6">
+            Kunne ikke starte appen. Prøv å laste siden på nytt.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white font-medium rounded-xl transition-colors"
+          >
+            Last inn på nytt
+          </button>
+          <p className="text-slate-600 text-xs mt-4">
+            Feil: {authError.message}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Wait for auth to be ready
+  if (!authReady || loading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw size={48} className="mx-auto text-violet-400 animate-spin mb-4" />
+          <p className="text-slate-300 font-medium">Laster VibeCheck...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Wait for onboarding status check
   if (!onboardingChecked || hasOnboarded === null) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -1239,29 +1324,32 @@ function App() {
     );
   }
 
-  // Show onboarding route or redirect if not completed
+  // Show onboarding if not completed (or on /onboarding route)
   if (showOnboarding || !hasOnboarded) {
     return <OnboardingPage onComplete={handleOnboardingComplete} />;
   }
 
-  // Loading state (auth)
-  if (loading) {
+  // No user after auth (shouldn't happen with anonymous auth, but safety check)
+  if (user === null) {
+    // Try to recover by reloading
+    console.error('[App] No user after auth ready - this should not happen');
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
         <div className="text-center">
-          <RefreshCw size={48} className="mx-auto text-violet-400 animate-spin mb-4" />
-          <p className="text-slate-300 font-medium">Laster...</p>
+          <AlertCircle size={48} className="mx-auto text-amber-400 mb-4" />
+          <p className="text-slate-300 mb-4">Kunne ikke koble til. Prøv igjen.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white font-medium rounded-xl transition-colors"
+          >
+            Last inn på nytt
+          </button>
         </div>
       </div>
     );
   }
 
-  // Not logged in - show login page
-  if (user === null) {
-    return <LoginPage />;
-  }
-
-  // Logged in - show main app
+  // Auth ready + onboarded → show main app
   return <MainApp userId={user.id} />;
 }
 

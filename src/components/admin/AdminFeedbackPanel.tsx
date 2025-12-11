@@ -230,6 +230,7 @@ export function AdminFeedbackPanel({ adminPin: _adminPin }: AdminFeedbackPanelPr
   const [feedbackList, setFeedbackList] = useState<Feedback[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<FeedbackStatus | 'all'>('all');
   const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -258,6 +259,7 @@ export function AdminFeedbackPanel({ adminPin: _adminPin }: AdminFeedbackPanelPr
 
   // Handle status change
   const handleStatusChange = async (feedbackId: string, newStatus: FeedbackStatus) => {
+    setUpdateError(null);
     const result = await updateFeedbackStatus(feedbackId, newStatus);
     
     if (result.success) {
@@ -273,8 +275,13 @@ export function AdminFeedbackPanel({ adminPin: _adminPin }: AdminFeedbackPanelPr
         setSelectedFeedback((prev) => prev ? { ...prev, status: newStatus } : null);
       }
     } else {
-      // Show error (could use a toast here)
+      // Show error in UI
+      const errorMsg = result.error || 'Kunne ikke oppdatere status';
+      setUpdateError(errorMsg);
       console.error('Failed to update status:', result.error);
+      
+      // Clear error after 5 seconds
+      setTimeout(() => setUpdateError(null), 5000);
     }
   };
 
@@ -324,6 +331,14 @@ export function AdminFeedbackPanel({ adminPin: _adminPin }: AdminFeedbackPanelPr
         <div className="mb-6 p-4 bg-red-900/20 border border-red-800/50 rounded-xl flex items-center gap-3">
           <AlertCircle size={20} className="text-red-400 flex-shrink-0" />
           <p className="text-sm text-red-300">{error}</p>
+        </div>
+      )}
+
+      {/* Update error state */}
+      {updateError && (
+        <div className="mb-6 p-4 bg-amber-900/20 border border-amber-800/50 rounded-xl flex items-center gap-3">
+          <AlertCircle size={20} className="text-amber-400 flex-shrink-0" />
+          <p className="text-sm text-amber-300">Feil ved statusoppdatering: {updateError}</p>
         </div>
       )}
 

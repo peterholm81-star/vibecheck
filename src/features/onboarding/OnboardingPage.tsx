@@ -202,11 +202,11 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
 
             {/* Anonymitet-tekst */}
             <p className="text-slate-600 text-center leading-relaxed mb-8 text-[15px]">
-              VibeCheck viser hvor det er liv, stemning og folk – uten å spore hvem du er.
+              <strong className="text-slate-800">Du trenger ikke konto for å bruke VibeCheck.</strong>
               <br /><br />
-              Vi lagrer ingen navn, ingen telefonnummer og ingen sosiale profiler.
+              Vi lager bare en anonym bruker-ID på denne mobilen. Ingen navn, ingen e-post, ingen telefonnummer – alt er 100% anonymt.
               <br /><br />
-              Data brukes kun anonymt for å vise trender og aktivitet, og basert på din og andres innlogging håper vi å kunne dytte deg i rett retning slik at du finner akkurat det du er ute etter når du drar på byen ;)
+              Data brukes kun for å vise trender og aktivitet, slik at du finner akkurat det du er ute etter når du drar på byen 🎉
             </p>
 
             {/* Shield icon */}
