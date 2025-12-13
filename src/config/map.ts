@@ -3,20 +3,22 @@
 // ============================================
 
 /**
- * Mapbox access token
- * For production, this should be in environment variables
- * Get your token at: https://account.mapbox.com/access-tokens/
- * 
- * NOTE: Using a public demo token for development.
- * Replace with your own token for production use.
+ * Mapbox access token (required)
+ * Must be set in environment variables: VITE_MAPBOX_TOKEN
  */
-export const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || 'pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw';
+export const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
+
+// Warn if token is missing (helps catch misconfiguration early)
+if (!MAPBOX_TOKEN) {
+  console.warn('[Mapbox] VITE_MAPBOX_TOKEN is not set. Map will not load correctly.');
+}
 
 /**
  * Map style URL
- * Using Mapbox Dark style to match nightlife theme
+ * Uses custom style from env, or falls back to Mapbox dark theme
  */
-export const MAP_STYLE = 'mapbox://styles/mapbox/dark-v11';
+export const MAP_STYLE =
+  import.meta.env.VITE_MAPBOX_STYLE_URL || 'mapbox://styles/mapbox/dark-v11';
 
 /**
  * Default map center (Trondheim sentrum)
@@ -33,6 +35,40 @@ export const DEFAULT_CENTER: [number, number] = [10.3950, 63.4305];
  * - 16: Street level
  */
 export const DEFAULT_ZOOM = 13;
+
+// ============================================
+// 3D CAMERA CONFIGURATION
+// ============================================
+
+/**
+ * Zoom boundaries for 2D/3D transition
+ * Below START_ZOOM: completely flat 2D
+ * Above FULL_ZOOM: full 3D perspective
+ * Between: linear interpolation
+ */
+export const PITCH_3D_START_ZOOM = 13;
+export const PITCH_3D_FULL_ZOOM = 16;
+
+/**
+ * Pitch values (camera tilt)
+ * 0 = looking straight down (2D)
+ * 60 = tilted perspective (3D)
+ */
+export const PITCH_2D = 0;
+export const PITCH_3D_MAX = 60;
+
+/**
+ * Bearing values (camera rotation)
+ * 0 = north up
+ * -20 = slightly rotated for depth
+ */
+export const BEARING_2D = 0;
+export const BEARING_3D = -20;
+
+/**
+ * Toggle for 3D buildings (extrusions)
+ */
+export const ENABLE_3D_BUILDINGS = true;
 
 /**
  * Zoom threshold for showing venue markers

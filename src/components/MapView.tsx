@@ -18,6 +18,13 @@ import {
   MAP_STYLE,
   DEFAULT_CENTER,
   DEFAULT_ZOOM,
+  PITCH_2D,
+  PITCH_3D_MAX,
+  PITCH_3D_START_ZOOM,
+  PITCH_3D_FULL_ZOOM,
+  BEARING_2D,
+  BEARING_3D,
+  ENABLE_3D_BUILDINGS,
   HEATMAP_COLORS,
   HEATMAP_RADIUS,
   HEATMAP_INTENSITY,
@@ -507,6 +514,68 @@ export function MapView({
     })),
   }), [heatmapData]);
 
+  // ============================================
+  // DYNAMIC 3D VIEW: Adjusts pitch/bearing based on zoom
+  // ============================================
+  
+  // Track last applied pitch/bearing to avoid unnecessary updates
+  const lastPitchRef = useRef<number>(PITCH_2D);
+  const lastBearingRef = useRef<number>(BEARING_2D);
+  
+  /**
+   * Updates camera pitch and bearing based on current zoom level.
+   * - Low zoom: flat 2D view
+   * - High zoom: tilted 3D perspective
+   * - Navigation mode: extra tilt for immersion
+   * - Uses epsilon check to avoid micro-updates for smoother performance
+   */
+  const updateViewForZoom = (mapInstance: mapboxgl.Map, navigating: boolean) => {
+    const z = mapInstance.getZoom();
+    const EPSILON = 0.1; // Only update if change > 0.1 degrees
+
+    let targetPitch: number;
+    let targetBearing: number;
+
+    // Below start zoom: completely flat 2D
+    if (z <= PITCH_3D_START_ZOOM) {
+      targetPitch = PITCH_2D;
+      targetBearing = BEARING_2D;
+    }
+    // Above full zoom: maximum 3D
+    else if (z >= PITCH_3D_FULL_ZOOM) {
+      targetPitch = navigating ? Math.max(50, PITCH_3D_MAX) : PITCH_3D_MAX;
+      targetBearing = BEARING_3D;
+    }
+    // Between: linear interpolation
+    else {
+      const t = (z - PITCH_3D_START_ZOOM) / (PITCH_3D_FULL_ZOOM - PITCH_3D_START_ZOOM);
+      targetPitch = PITCH_2D + t * (PITCH_3D_MAX - PITCH_2D);
+      targetBearing = BEARING_2D + t * (BEARING_3D - BEARING_2D);
+
+      // Navigation boost: ensure minimum pitch of 45° when navigating
+      if (navigating) {
+        targetPitch = Math.max(45, targetPitch);
+      }
+    }
+
+    // Only update if change exceeds epsilon (smoother, less stuttering)
+    const pitchDelta = Math.abs(targetPitch - lastPitchRef.current);
+    const bearingDelta = Math.abs(targetBearing - lastBearingRef.current);
+
+    if (pitchDelta > EPSILON) {
+      mapInstance.setPitch(targetPitch);
+      lastPitchRef.current = targetPitch;
+    }
+
+    if (bearingDelta > EPSILON) {
+      mapInstance.setBearing(targetBearing);
+      lastBearingRef.current = targetBearing;
+    }
+
+    // Debug logging (uncomment to troubleshoot)
+    // console.log('[Zoom debug]', z.toFixed(2), targetPitch.toFixed(1), targetBearing.toFixed(1));
+  };
+
   // Initialize map
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -516,7 +585,15 @@ export function MapView({
       style: MAP_STYLE,
       center: DEFAULT_CENTER,
       zoom: DEFAULT_ZOOM,
+      pitch: PITCH_2D,      // Start flat, will adjust based on zoom
+      bearing: BEARING_2D,
+      antialias: true,
       attributionControl: false,
+    });
+
+    // Global error handler for map errors
+    map.current.on('error', (e) => {
+      console.error('[Mapbox error]', e && e.error);
     });
 
     // Add minimal attribution (bottom-left to keep bottom-right clean)
@@ -531,23 +608,161 @@ export function MapView({
       'top-right'
     );
 
-    // Track zoom level for marker visibility
-    map.current.on('zoom', () => {
-      if (map.current) {
-        setCurrentZoom(map.current.getZoom());
-      }
-    });
+    // Continuous zoom handler: updates both zoom state AND pitch/bearing in real-time
+    const handleZoom = () => {
+      if (!map.current) return;
+      setCurrentZoom(map.current.getZoom());
+      updateViewForZoom(map.current, isNavigating);
+    };
+    map.current.on('zoom', handleZoom);
 
     // Wait for map to load before adding layers
     map.current.on('load', () => {
+      if (!map.current) return;
+
+      // Set initial view based on current zoom
+      updateViewForZoom(map.current, isNavigating);
+
+      // Configure 3D lighting for better depth perception
+      try {
+        map.current.setLight({
+          anchor: 'viewport',
+          color: '#ffe6cc',
+          intensity: 0.4,
+        });
+      } catch (e) {
+        console.warn('[Mapbox 3D] Could not set lighting:', e);
+      }
+
+      // Add 3D buildings layer if enabled
+      if (ENABLE_3D_BUILDINGS) {
+        try {
+          const style = map.current.getStyle();
+          const layers = style?.layers || [];
+
+          // Find first label layer to insert 3D buildings underneath
+          const labelLayer = layers.find(
+            (layer) =>
+              layer.type === 'symbol' &&
+              layer.layout &&
+              (layer.layout as Record<string, unknown>)['text-field']
+          );
+          const labelLayerId = labelLayer?.id;
+
+          // Only add if not already present
+          if (!map.current.getLayer('3d-buildings')) {
+            map.current.addLayer(
+              {
+                id: '3d-buildings',
+                source: 'composite',
+                'source-layer': 'building',
+                filter: ['==', 'extrude', 'true'],
+                type: 'fill-extrusion',
+                minzoom: 15,
+                paint: {
+                  'fill-extrusion-color': '#a9b3c5',
+                  'fill-extrusion-height': [
+                    'interpolate',
+                    ['linear'],
+                    ['zoom'],
+                    15,
+                    0,
+                    15.05,
+                    ['get', 'height'],
+                  ],
+                  'fill-extrusion-base': ['get', 'min_height'],
+                  'fill-extrusion-opacity': 0.85,
+                },
+              },
+              labelLayerId
+            );
+          }
+        } catch (e) {
+          console.warn('[Mapbox 3D] Could not add 3D buildings:', e);
+        }
+      }
+
+      // Add user position glow layers
+      try {
+        if (!map.current.getSource('user-position')) {
+          map.current.addSource('user-position', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
+          });
+
+          // Outer glow
+          map.current.addLayer({
+            id: 'user-position-glow',
+            type: 'circle',
+            source: 'user-position',
+            paint: {
+              'circle-radius': 30,
+              'circle-color': 'rgba(0, 255, 255, 0.2)',
+              'circle-blur': 0.7,
+            },
+          });
+
+          // Core dot
+          map.current.addLayer({
+            id: 'user-position-core',
+            type: 'circle',
+            source: 'user-position',
+            paint: {
+              'circle-radius': 6,
+              'circle-color': 'rgba(0, 255, 255, 0.9)',
+              'circle-stroke-color': '#ffffff',
+              'circle-stroke-width': 1.5,
+            },
+          });
+        }
+      } catch (e) {
+        console.warn('[Mapbox 3D] Could not add user position layers:', e);
+      }
+
       setMapLoaded(true);
     });
 
     return () => {
-      map.current?.remove();
-      map.current = null;
+      if (map.current) {
+        map.current.off('zoom', handleZoom);
+        map.current.remove();
+        map.current = null;
+      }
     };
   }, []);
+
+  // Update user position glow when position changes
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+
+    const source = map.current.getSource('user-position') as mapboxgl.GeoJSONSource | undefined;
+    if (!source) return;
+
+    if (!userPosition) {
+      source.setData({ type: 'FeatureCollection', features: [] });
+      return;
+    }
+
+    source.setData({
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [userPosition.lon, userPosition.lat],
+          },
+          properties: {},
+        },
+      ],
+    });
+  }, [mapLoaded, userPosition]);
+
+  // Update pitch/bearing when navigation mode changes
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+    updateViewForZoom(map.current, isNavigating);
+  }, [mapLoaded, isNavigating]);
 
   // Add/update heatmap layer when map is loaded and data changes
   // Heatmap 2.0: Now uses heatmapVenueGeoJSON from the new hook
