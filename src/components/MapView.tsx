@@ -71,7 +71,8 @@ const STUDIO_STYLE_IS_SOURCE_OF_TRUTH = true;
 const PITCH_ZOOM_START = 13.2;  // Start tilting at this zoom
 const PITCH_ZOOM_END = 16.0;    // Full tilt at this zoom
 const PITCH_MAX = 55;           // Maximum pitch in degrees
-const BEARING_MAX = -15;        // Slight rotation at max 3D
+// NOTE: Auto-bearing disabled to keep "north-up" stable during zoom
+// const BEARING_MAX = -15;     // (disabled - user can rotate manually)
 
 // ============================================
 // DESKTOP SCROLL ZOOM TUNING
@@ -531,9 +532,8 @@ export function MapView({
   // SMOOTH ZOOM → PITCH TRANSITION
   // ============================================
   
-  // Track last applied values + pending RAF for throttling
+  // Track last applied pitch + pending RAF for throttling
   const lastPitchRef = useRef<number>(0);
-  const lastBearingRef = useRef<number>(0);
   const pendingUpdateRef = useRef<number | null>(null);
   
   /**
@@ -564,20 +564,8 @@ export function MapView({
   };
   
   /**
-   * Calculate target bearing based on zoom using smoothstep curve.
-   */
-  const calculateBearingForZoom = (zoom: number): number => {
-    if (zoom <= PITCH_ZOOM_START) return 0;
-    if (zoom >= PITCH_ZOOM_END) return BEARING_MAX;
-    
-    const t = (zoom - PITCH_ZOOM_START) / (PITCH_ZOOM_END - PITCH_ZOOM_START);
-    const smooth = smoothstep(Math.max(0, Math.min(1, t)));
-    return smooth * BEARING_MAX;
-  };
-  
-  /**
    * Throttled camera update using requestAnimationFrame + easeTo for smoothness.
-   * Only updates if pitch/bearing changed significantly (epsilon check).
+   * Only updates pitch based on zoom - bearing stays "north-up" (user can rotate manually).
    */
   const scheduleViewUpdate = (mapInstance: mapboxgl.Map, navigating: boolean) => {
     // Cancel any pending update
@@ -591,22 +579,19 @@ export function MapView({
       
       const zoom = mapInstance.getZoom();
       const targetPitch = calculatePitchForZoom(zoom, navigating);
-      const targetBearing = calculateBearingForZoom(zoom);
       
       const EPSILON = 0.5; // Only ease if change is noticeable
       const pitchDelta = Math.abs(targetPitch - lastPitchRef.current);
-      const bearingDelta = Math.abs(targetBearing - lastBearingRef.current);
       
-      if (pitchDelta > EPSILON || bearingDelta > EPSILON) {
+      if (pitchDelta > EPSILON) {
         mapInstance.easeTo({
           pitch: targetPitch,
-          bearing: targetBearing,
+          // NOTE: bearing not set - keeps current rotation (north-up by default)
           duration: 150,
           easing: (t) => t * (2 - t), // ease-out quad
           essential: true,
         });
         lastPitchRef.current = targetPitch;
-        lastBearingRef.current = targetBearing;
       }
     });
   };
@@ -671,7 +656,7 @@ export function MapView({
       if (STUDIO_STYLE_IS_SOURCE_OF_TRUTH) {
         console.info('[MapView] Studio style mode enabled (no runtime layers/fog/light)');
       }
-      console.info('[MapView] Zoom→Pitch curve active');
+      console.info('[MapView] Auto-bearing disabled; pitch-only zoom curve');
 
       // Set initial view based on current zoom (using smoothstep)
       scheduleViewUpdate(map.current, isNavigating);
