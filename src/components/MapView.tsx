@@ -820,9 +820,9 @@ export function MapView({
   const ENABLE_GREEN_GLOW_LAYERS = false; // Disabled: replaced by red beams
   const ENABLE_RED_BEAM_COLUMNS = true;   // New 3D light beams
   
-  // Beam radii - smaller on mobile to avoid clutter
-  const BEAM_CORE_RADIUS_KM = isMobile ? 0.0025 : 0.0035; // 2.5m / 3.5m
-  const BEAM_GLOW_RADIUS_KM = isMobile ? 0.0055 : 0.0075; // 5.5m / 7.5m
+  // Beam radii - thin laser core, wide soft glow
+  const BEAM_CORE_RADIUS_KM = isMobile ? 0.0018 : 0.0028; // ~1.8m / 2.8m (sharp laser)
+  const BEAM_GLOW_RADIUS_KM = isMobile ? 0.012 : 0.016;   // ~12m / 16m (soft aura)
   const BEAM_MIN_ZOOM = isMobile ? 16 : 15;
   
   /**
@@ -933,7 +933,7 @@ export function MapView({
       });
 
       // Layer 1: GLOW (added first = underneath)
-      // Soft, wide aura around the beam
+      // Very soft, wide aura - almost invisible "atmosphere"
       map.current.addLayer({
         id: glowLayerId,
         type: 'fill-extrusion',
@@ -942,12 +942,13 @@ export function MapView({
         paint: {
           // Soft red glow
           'fill-extrusion-color': 'rgba(255, 25, 25, 0.35)',
+          // Very low opacity - just atmosphere, not a second column
           'fill-extrusion-opacity': [
             'interpolate', ['linear'], ['zoom'],
             15, 0.0,
-            15.8, 0.18,
-            17, 0.25,
-            19, 0.30,
+            16, 0.06,
+            17.5, 0.10,
+            19, 0.14,
           ],
           // Lower height for glow
           'fill-extrusion-height': [
@@ -963,7 +964,7 @@ export function MapView({
       });
 
       // Layer 2: CORE (added after = on top)
-      // Bright neon center
+      // Sharp laser beam - thin and bright
       map.current.addLayer({
         id: coreLayerId,
         type: 'fill-extrusion',
@@ -972,12 +973,13 @@ export function MapView({
         paint: {
           // Bright neon red
           'fill-extrusion-color': 'rgba(255, 30, 30, 0.95)',
+          // Sharper opacity curve for laser effect
           'fill-extrusion-opacity': [
             'interpolate', ['linear'], ['zoom'],
             15, 0.0,
-            15.8, 0.35,
-            17, 0.55,
-            19, 0.70,
+            15.7, 0.45,
+            17, 0.65,
+            19, 0.78,
           ],
           // Taller height for core (extends above glow)
           'fill-extrusion-height': [
