@@ -927,25 +927,25 @@ export function MapView({
         paint: {
           // Intense neon red
           'fill-extrusion-color': 'rgba(255, 10, 10, 0.98)',
-          // Sharp opacity for laser look
+          // Lower top-opacity for "fading light" feel
           'fill-extrusion-opacity': [
             'interpolate', ['linear'], ['zoom'],
             15, 0.0,
-            15.8, 0.60,
-            17, 0.78,
-            19, 0.88,
+            15.8, 0.55,
+            17, 0.65,
+            19, 0.72,
           ],
-          // Tall laser beam
+          // Lower max height for less solid appearance
           'fill-extrusion-height': [
             'interpolate', ['linear'], ['zoom'],
             15, 0,
-            16, 45,
-            17.5, 110,
-            19, 160,
+            16, 35,
+            17.5, 85,
+            19, 120,
           ],
           // Start from ground level
           'fill-extrusion-base': 0,
-          // Gradient for light beam effect
+          // Gradient for light beam effect (fades toward top)
           'fill-extrusion-vertical-gradient': true,
         },
       });
