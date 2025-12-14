@@ -813,25 +813,28 @@ export function MapView({
   }, [mapLoaded, heatmapVenueGeoJSON, heatmapGeoJSON, heatmapMode]);
 
   // ============================================
-  // VENUE BEAM LAYERS: "Rammstein" 3D light columns
+  // VENUE BEAM LAYERS: Neon light beams (core + glow)
   // ============================================
   
   // Feature flags for easy toggling
   const ENABLE_GREEN_GLOW_LAYERS = false; // Disabled: replaced by red beams
-  const ENABLE_RED_BEAM_COLUMNS = true;   // New 3D light columns
+  const ENABLE_RED_BEAM_COLUMNS = true;   // New 3D light beams
+  
+  // Beam radii - smaller on mobile to avoid clutter
+  const BEAM_CORE_RADIUS_KM = isMobile ? 0.0025 : 0.0035; // 2.5m / 3.5m
+  const BEAM_GLOW_RADIUS_KM = isMobile ? 0.0055 : 0.0075; // 5.5m / 7.5m
+  const BEAM_MIN_ZOOM = isMobile ? 16 : 15;
   
   /**
-   * Build GeoJSON FeatureCollection with circle polygons for 3D beam extrusion.
-   * Uses turf.circle() to create small polygons that can be extruded vertically.
+   * Helper: Build circle polygons for venues using turf.circle()
    */
-  const venueBeamGeoJSON = useMemo((): GeoJSON.FeatureCollection<GeoJSON.Polygon> => {
-    const features = venues
+  const buildVenueCircles = (venueList: typeof venues, radiusKm: number): GeoJSON.FeatureCollection<GeoJSON.Polygon> => {
+    const features = venueList
       .filter(v => v.latitude && v.longitude)
       .map(venue => {
-        // Create a small circle polygon (8 meter radius) around venue point
         const circle = turf.circle(
           [venue.longitude, venue.latitude],
-          0.008, // 8 meters in kilometers
+          radiusKm,
           { steps: 24, units: 'kilometers' }
         );
         return {
@@ -844,11 +847,20 @@ export function MapView({
         };
       });
     
-    return {
-      type: 'FeatureCollection',
-      features,
-    };
-  }, [venues]);
+    return { type: 'FeatureCollection', features };
+  };
+  
+  // Core beam GeoJSON (thin, bright center)
+  const venueBeamCoreGeoJSON = useMemo(
+    () => buildVenueCircles(venues, BEAM_CORE_RADIUS_KM),
+    [venues, BEAM_CORE_RADIUS_KM]
+  );
+  
+  // Glow beam GeoJSON (wider, softer aura)
+  const venueBeamGlowGeoJSON = useMemo(
+    () => buildVenueCircles(venues, BEAM_GLOW_RADIUS_KM),
+    [venues, BEAM_GLOW_RADIUS_KM]
+  );
 
   // Legacy: GeoJSON points for green glow (disabled by default)
   const venuesPointGeoJSON = useMemo((): GeoJSON.FeatureCollection => ({
@@ -869,80 +881,140 @@ export function MapView({
       })),
   }), [venues]);
 
-  // Add venue beam source and 3D fill-extrusion layer
+  // Add venue beam sources and dual-layer 3D fill-extrusion (glow + core)
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
     if (!ENABLE_RED_BEAM_COLUMNS) return;
 
-    const sourceId = 'venues-beam-source';
-    const layerId = 'venues-beam-column';
+    const coreSourceId = 'venues-beam-core-source';
+    const glowSourceId = 'venues-beam-glow-source';
+    const coreLayerId = 'venues-beam-core';
+    const glowLayerId = 'venues-beam-glow';
+    // Legacy layer ID for cleanup
+    const legacyLayerId = 'venues-beam-column';
+    const legacySourceId = 'venues-beam-source';
 
-    // Remove existing layer and source if they exist (for hot reload)
-    if (map.current.getLayer(layerId)) {
-      map.current.removeLayer(layerId);
+    // Remove legacy layer/source if exists
+    if (map.current.getLayer(legacyLayerId)) {
+      map.current.removeLayer(legacyLayerId);
     }
-    if (map.current.getSource(sourceId)) {
-      map.current.removeSource(sourceId);
+    if (map.current.getSource(legacySourceId)) {
+      map.current.removeSource(legacySourceId);
+    }
+
+    // Remove existing layers (order matters: layers before sources)
+    if (map.current.getLayer(coreLayerId)) {
+      map.current.removeLayer(coreLayerId);
+    }
+    if (map.current.getLayer(glowLayerId)) {
+      map.current.removeLayer(glowLayerId);
+    }
+    if (map.current.getSource(coreSourceId)) {
+      map.current.removeSource(coreSourceId);
+    }
+    if (map.current.getSource(glowSourceId)) {
+      map.current.removeSource(glowSourceId);
     }
 
     // Don't add if no venues
-    if (venueBeamGeoJSON.features.length === 0) return;
+    if (venueBeamCoreGeoJSON.features.length === 0) return;
 
     try {
-      // Add GeoJSON source with circle polygons
-      map.current.addSource(sourceId, {
+      // Add glow source (wider circles)
+      map.current.addSource(glowSourceId, {
         type: 'geojson',
-        data: venueBeamGeoJSON,
+        data: venueBeamGlowGeoJSON,
       });
 
-      // Add 3D fill-extrusion layer for vertical light beams
+      // Add core source (thinner circles)
+      map.current.addSource(coreSourceId, {
+        type: 'geojson',
+        data: venueBeamCoreGeoJSON,
+      });
+
+      // Layer 1: GLOW (added first = underneath)
+      // Soft, wide aura around the beam
       map.current.addLayer({
-        id: layerId,
+        id: glowLayerId,
         type: 'fill-extrusion',
-        source: sourceId,
-        minzoom: 15,
+        source: glowSourceId,
+        minzoom: BEAM_MIN_ZOOM,
         paint: {
-          // Rammstein red color with transparency
-          'fill-extrusion-color': 'rgba(255, 40, 40, 0.55)',
-          // Opacity fades in with zoom
+          // Soft red glow
+          'fill-extrusion-color': 'rgba(255, 25, 25, 0.35)',
           'fill-extrusion-opacity': [
             'interpolate', ['linear'], ['zoom'],
             15, 0.0,
-            15.6, 0.35,
-            17, 0.45,
-            19, 0.55,
+            15.8, 0.18,
+            17, 0.25,
+            19, 0.30,
           ],
-          // Height increases dramatically with zoom for dramatic effect
+          // Lower height for glow
           'fill-extrusion-height': [
             'interpolate', ['linear'], ['zoom'],
             15, 0,
-            16, 35,
-            17.5, 90,
-            19, 140,
+            16, 22,
+            17.5, 55,
+            19, 80,
           ],
           'fill-extrusion-base': 0,
-          // Gradient from bottom to top for light beam effect
           'fill-extrusion-vertical-gradient': true,
         },
       });
 
-      console.info('[MapView] Venue beam layer added:', layerId);
-    } catch (e) {
-      console.warn('[MapView] Could not add venue beam layer:', e);
-    }
-  }, [mapLoaded, venueBeamGeoJSON]);
+      // Layer 2: CORE (added after = on top)
+      // Bright neon center
+      map.current.addLayer({
+        id: coreLayerId,
+        type: 'fill-extrusion',
+        source: coreSourceId,
+        minzoom: BEAM_MIN_ZOOM,
+        paint: {
+          // Bright neon red
+          'fill-extrusion-color': 'rgba(255, 30, 30, 0.95)',
+          'fill-extrusion-opacity': [
+            'interpolate', ['linear'], ['zoom'],
+            15, 0.0,
+            15.8, 0.35,
+            17, 0.55,
+            19, 0.70,
+          ],
+          // Taller height for core (extends above glow)
+          'fill-extrusion-height': [
+            'interpolate', ['linear'], ['zoom'],
+            15, 0,
+            16, 30,
+            17.5, 70,
+            19, 100,
+          ],
+          'fill-extrusion-base': 0,
+          'fill-extrusion-vertical-gradient': true,
+        },
+      });
 
-  // Update beam data when venues change (without recreating layer)
+      console.info('[MapView] Venue beam layers added:', glowLayerId, coreLayerId);
+    } catch (e) {
+      console.warn('[MapView] Could not add venue beam layers:', e);
+    }
+  }, [mapLoaded, venueBeamCoreGeoJSON, venueBeamGlowGeoJSON, BEAM_MIN_ZOOM]);
+
+  // Update beam data when venues change (without recreating layers)
   useEffect(() => {
     if (!map.current || !mapLoaded || !ENABLE_RED_BEAM_COLUMNS) return;
 
-    const sourceId = 'venues-beam-source';
-    const source = map.current.getSource(sourceId) as mapboxgl.GeoJSONSource | undefined;
+    const coreSourceId = 'venues-beam-core-source';
+    const glowSourceId = 'venues-beam-glow-source';
     
-    if (source && venueBeamGeoJSON.features.length > 0) {
-      source.setData(venueBeamGeoJSON);
+    const coreSource = map.current.getSource(coreSourceId) as mapboxgl.GeoJSONSource | undefined;
+    const glowSource = map.current.getSource(glowSourceId) as mapboxgl.GeoJSONSource | undefined;
+    
+    if (coreSource && venueBeamCoreGeoJSON.features.length > 0) {
+      coreSource.setData(venueBeamCoreGeoJSON);
     }
-  }, [mapLoaded, venueBeamGeoJSON]);
+    if (glowSource && venueBeamGlowGeoJSON.features.length > 0) {
+      glowSource.setData(venueBeamGlowGeoJSON);
+    }
+  }, [mapLoaded, venueBeamCoreGeoJSON, venueBeamGlowGeoJSON]);
 
   // Legacy: Add green glow layers (DISABLED by default)
   useEffect(() => {
@@ -1012,15 +1084,19 @@ export function MapView({
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
 
-    const beamLayerId = 'venues-beam-column';
+    const beamCoreLayerId = 'venues-beam-core';
+    const beamGlowLayerId = 'venues-beam-glow';
     const groundLayerId = 'venues-glow-ground';
     const beaconLayerId = 'venues-glow-beacon';
     const visibility = isNavigating ? 'none' : 'visible';
 
     try {
-      // Toggle beam layer
-      if (map.current.getLayer(beamLayerId)) {
-        map.current.setLayoutProperty(beamLayerId, 'visibility', visibility);
+      // Toggle beam layers (core + glow)
+      if (map.current.getLayer(beamCoreLayerId)) {
+        map.current.setLayoutProperty(beamCoreLayerId, 'visibility', visibility);
+      }
+      if (map.current.getLayer(beamGlowLayerId)) {
+        map.current.setLayoutProperty(beamGlowLayerId, 'visibility', visibility);
       }
       // Toggle legacy glow layers (if enabled)
       if (map.current.getLayer(groundLayerId)) {
