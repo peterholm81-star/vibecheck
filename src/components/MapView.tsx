@@ -818,11 +818,11 @@ export function MapView({
   
   // Feature flags for easy toggling
   const ENABLE_GREEN_GLOW_LAYERS = false; // Disabled: replaced by red beams
-  const ENABLE_RED_BEAM_COLUMNS = true;   // New 3D light beams
+  const ENABLE_RED_BEAM_COLUMNS = true;   // Ultrathin laser beams
   
-  // Beam radii - thin laser core, wide soft glow
-  const BEAM_CORE_RADIUS_KM = isMobile ? 0.0018 : 0.0028; // ~1.8m / 2.8m (sharp laser)
-  const BEAM_GLOW_RADIUS_KM = isMobile ? 0.012 : 0.016;   // ~12m / 16m (soft aura)
+  // Ultra-thin laser radius (no glow layer)
+  // 1m = 0.001km, so 0.00055km = ~0.55m radius = ~1.1m diameter
+  const BEAM_CORE_RADIUS_KM = isMobile ? 0.00055 : 0.00085; // ~0.55m / 0.85m radius
   const BEAM_MIN_ZOOM = isMobile ? 16 : 15;
   
   /**
@@ -850,16 +850,10 @@ export function MapView({
     return { type: 'FeatureCollection', features };
   };
   
-  // Core beam GeoJSON (thin, bright center)
+  // Core beam GeoJSON (ultrathin laser)
   const venueBeamCoreGeoJSON = useMemo(
     () => buildVenueCircles(venues, BEAM_CORE_RADIUS_KM),
     [venues, BEAM_CORE_RADIUS_KM]
-  );
-  
-  // Glow beam GeoJSON (wider, softer aura)
-  const venueBeamGlowGeoJSON = useMemo(
-    () => buildVenueCircles(venues, BEAM_GLOW_RADIUS_KM),
-    [venues, BEAM_GLOW_RADIUS_KM]
   );
 
   // Legacy: GeoJSON points for green glow (disabled by default)
@@ -881,142 +875,98 @@ export function MapView({
       })),
   }), [venues]);
 
-  // Add venue beam sources and dual-layer 3D fill-extrusion (glow + core)
+  // Add venue beam source and ultrathin laser layer (core only, no glow)
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
     if (!ENABLE_RED_BEAM_COLUMNS) return;
 
     const coreSourceId = 'venues-beam-core-source';
-    const glowSourceId = 'venues-beam-glow-source';
     const coreLayerId = 'venues-beam-core';
+    // Legacy IDs for cleanup
+    const glowSourceId = 'venues-beam-glow-source';
     const glowLayerId = 'venues-beam-glow';
-    // Legacy layer ID for cleanup
     const legacyLayerId = 'venues-beam-column';
     const legacySourceId = 'venues-beam-source';
 
-    // Remove legacy layer/source if exists
+    // Remove all legacy/old layers and sources
     if (map.current.getLayer(legacyLayerId)) {
       map.current.removeLayer(legacyLayerId);
-    }
-    if (map.current.getSource(legacySourceId)) {
-      map.current.removeSource(legacySourceId);
-    }
-
-    // Remove existing layers (order matters: layers before sources)
-    if (map.current.getLayer(coreLayerId)) {
-      map.current.removeLayer(coreLayerId);
     }
     if (map.current.getLayer(glowLayerId)) {
       map.current.removeLayer(glowLayerId);
     }
-    if (map.current.getSource(coreSourceId)) {
-      map.current.removeSource(coreSourceId);
+    if (map.current.getLayer(coreLayerId)) {
+      map.current.removeLayer(coreLayerId);
+    }
+    if (map.current.getSource(legacySourceId)) {
+      map.current.removeSource(legacySourceId);
     }
     if (map.current.getSource(glowSourceId)) {
       map.current.removeSource(glowSourceId);
+    }
+    if (map.current.getSource(coreSourceId)) {
+      map.current.removeSource(coreSourceId);
     }
 
     // Don't add if no venues
     if (venueBeamCoreGeoJSON.features.length === 0) return;
 
     try {
-      // Add glow source (wider circles)
-      map.current.addSource(glowSourceId, {
-        type: 'geojson',
-        data: venueBeamGlowGeoJSON,
-      });
-
-      // Add core source (thinner circles)
+      // Add core source (ultrathin circles)
       map.current.addSource(coreSourceId, {
         type: 'geojson',
         data: venueBeamCoreGeoJSON,
       });
 
-      // Layer 1: GLOW (added first = underneath)
-      // Very soft, wide aura - almost invisible "atmosphere"
-      map.current.addLayer({
-        id: glowLayerId,
-        type: 'fill-extrusion',
-        source: glowSourceId,
-        minzoom: BEAM_MIN_ZOOM,
-        paint: {
-          // Soft red glow
-          'fill-extrusion-color': 'rgba(255, 25, 25, 0.35)',
-          // Very low opacity - just atmosphere, not a second column
-          'fill-extrusion-opacity': [
-            'interpolate', ['linear'], ['zoom'],
-            15, 0.0,
-            16, 0.06,
-            17.5, 0.10,
-            19, 0.14,
-          ],
-          // Lower height for glow
-          'fill-extrusion-height': [
-            'interpolate', ['linear'], ['zoom'],
-            15, 0,
-            16, 22,
-            17.5, 55,
-            19, 80,
-          ],
-          'fill-extrusion-base': 0,
-          'fill-extrusion-vertical-gradient': true,
-        },
-      });
-
-      // Layer 2: CORE (added after = on top)
-      // Sharp laser beam - thin and bright
+      // Single layer: CORE - ultrathin laser beam from ground
       map.current.addLayer({
         id: coreLayerId,
         type: 'fill-extrusion',
         source: coreSourceId,
         minzoom: BEAM_MIN_ZOOM,
         paint: {
-          // Bright neon red
-          'fill-extrusion-color': 'rgba(255, 30, 30, 0.95)',
-          // Sharper opacity curve for laser effect
+          // Intense neon red
+          'fill-extrusion-color': 'rgba(255, 10, 10, 0.98)',
+          // Sharp opacity for laser look
           'fill-extrusion-opacity': [
             'interpolate', ['linear'], ['zoom'],
             15, 0.0,
-            15.7, 0.45,
-            17, 0.65,
-            19, 0.78,
+            15.8, 0.60,
+            17, 0.78,
+            19, 0.88,
           ],
-          // Taller height for core (extends above glow)
+          // Tall laser beam
           'fill-extrusion-height': [
             'interpolate', ['linear'], ['zoom'],
             15, 0,
-            16, 30,
-            17.5, 70,
-            19, 100,
+            16, 45,
+            17.5, 110,
+            19, 160,
           ],
+          // Start from ground level
           'fill-extrusion-base': 0,
+          // Gradient for light beam effect
           'fill-extrusion-vertical-gradient': true,
         },
       });
 
-      console.info('[MapView] Venue beam layers added:', glowLayerId, coreLayerId);
+      console.info('[MapView] Venue laser beam added:', coreLayerId);
     } catch (e) {
-      console.warn('[MapView] Could not add venue beam layers:', e);
+      console.warn('[MapView] Could not add venue laser beam:', e);
     }
-  }, [mapLoaded, venueBeamCoreGeoJSON, venueBeamGlowGeoJSON, BEAM_MIN_ZOOM]);
+  }, [mapLoaded, venueBeamCoreGeoJSON, BEAM_MIN_ZOOM]);
 
-  // Update beam data when venues change (without recreating layers)
+  // Update beam data when venues change (without recreating layer)
   useEffect(() => {
     if (!map.current || !mapLoaded || !ENABLE_RED_BEAM_COLUMNS) return;
 
     const coreSourceId = 'venues-beam-core-source';
-    const glowSourceId = 'venues-beam-glow-source';
-    
     const coreSource = map.current.getSource(coreSourceId) as mapboxgl.GeoJSONSource | undefined;
-    const glowSource = map.current.getSource(glowSourceId) as mapboxgl.GeoJSONSource | undefined;
     
     if (coreSource && venueBeamCoreGeoJSON.features.length > 0) {
       coreSource.setData(venueBeamCoreGeoJSON);
     }
-    if (glowSource && venueBeamGlowGeoJSON.features.length > 0) {
-      glowSource.setData(venueBeamGlowGeoJSON);
-    }
-  }, [mapLoaded, venueBeamCoreGeoJSON, venueBeamGlowGeoJSON]);
+  }, [mapLoaded, venueBeamCoreGeoJSON]);
 
   // Legacy: Add green glow layers (DISABLED by default)
   useEffect(() => {
@@ -1087,18 +1037,14 @@ export function MapView({
     if (!map.current || !mapLoaded) return;
 
     const beamCoreLayerId = 'venues-beam-core';
-    const beamGlowLayerId = 'venues-beam-glow';
     const groundLayerId = 'venues-glow-ground';
     const beaconLayerId = 'venues-glow-beacon';
     const visibility = isNavigating ? 'none' : 'visible';
 
     try {
-      // Toggle beam layers (core + glow)
+      // Toggle laser beam layer
       if (map.current.getLayer(beamCoreLayerId)) {
         map.current.setLayoutProperty(beamCoreLayerId, 'visibility', visibility);
-      }
-      if (map.current.getLayer(beamGlowLayerId)) {
-        map.current.setLayoutProperty(beamGlowLayerId, 'visibility', visibility);
       }
       // Toggle legacy glow layers (if enabled)
       if (map.current.getLayer(groundLayerId)) {
