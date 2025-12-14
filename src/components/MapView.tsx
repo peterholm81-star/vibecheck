@@ -811,6 +811,154 @@ export function MapView({
     });
   }, [mapLoaded, heatmapVenueGeoJSON, heatmapGeoJSON, heatmapMode]);
 
+  // ============================================
+  // VENUE GLOW LAYERS: "Party in this building" effect
+  // ============================================
+  
+  // Create GeoJSON from venues for glow layers
+  const venuesGeoJSON = useMemo((): GeoJSON.FeatureCollection => ({
+    type: 'FeatureCollection',
+    features: venues
+      .filter(v => v.latitude && v.longitude)
+      .map(venue => ({
+        type: 'Feature' as const,
+        geometry: {
+          type: 'Point' as const,
+          coordinates: [venue.longitude, venue.latitude],
+        },
+        properties: {
+          id: venue.id,
+          name: venue.name,
+          category: venue.category,
+        },
+      })),
+  }), [venues]);
+
+  // Add venue glow source and layers
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+
+    const sourceId = 'venues-glow';
+    const groundLayerId = 'venues-glow-ground';
+    const beaconLayerId = 'venues-glow-beacon';
+
+    // Remove existing layers and source if they exist (for hot reload)
+    if (map.current.getLayer(beaconLayerId)) {
+      map.current.removeLayer(beaconLayerId);
+    }
+    if (map.current.getLayer(groundLayerId)) {
+      map.current.removeLayer(groundLayerId);
+    }
+    if (map.current.getSource(sourceId)) {
+      map.current.removeSource(sourceId);
+    }
+
+    // Don't add layers if no venues
+    if (venuesGeoJSON.features.length === 0) return;
+
+    try {
+      // Add GeoJSON source for venues
+      map.current.addSource(sourceId, {
+        type: 'geojson',
+        data: venuesGeoJSON,
+      });
+
+      // Layer 1: Ground glow (subtle halo on the ground)
+      // Placed early so it's under markers and labels
+      map.current.addLayer({
+        id: groundLayerId,
+        type: 'circle',
+        source: sourceId,
+        minzoom: 12,
+        paint: {
+          // Teal/green glow color matching app aesthetic
+          'circle-color': '#7CFFB2',
+          // Opacity increases with zoom for subtle to visible transition
+          'circle-opacity': [
+            'interpolate', ['linear'], ['zoom'],
+            12, 0.08,
+            14, 0.12,
+            16, 0.18,
+          ],
+          // Radius grows with zoom
+          'circle-radius': [
+            'interpolate', ['linear'], ['zoom'],
+            12, 12,
+            14, 20,
+            16, 35,
+          ],
+          // Heavy blur for soft glow effect
+          'circle-blur': 1.0,
+          // Align to map plane for 3D effect
+          'circle-pitch-alignment': 'map',
+        },
+      });
+
+      // Layer 2: Beacon glow (brighter, smaller, more defined)
+      // Visible at higher zoom, gives "party here" focus
+      map.current.addLayer({
+        id: beaconLayerId,
+        type: 'circle',
+        source: sourceId,
+        minzoom: 14,
+        paint: {
+          // Same color, higher opacity
+          'circle-color': '#7CFFB2',
+          'circle-opacity': [
+            'interpolate', ['linear'], ['zoom'],
+            14, 0.25,
+            16, 0.40,
+            18, 0.50,
+          ],
+          // Smaller, focused radius
+          'circle-radius': [
+            'interpolate', ['linear'], ['zoom'],
+            14, 5,
+            16, 8,
+            18, 12,
+          ],
+          // Less blur for defined beacon
+          'circle-blur': 0.3,
+          // Ring effect
+          'circle-stroke-color': '#7CFFB2',
+          'circle-stroke-width': [
+            'interpolate', ['linear'], ['zoom'],
+            14, 1,
+            16, 2,
+          ],
+          'circle-stroke-opacity': 0.6,
+          // Align to map for 3D perspective
+          'circle-pitch-alignment': 'map',
+          'circle-pitch-scale': 'map',
+        },
+      });
+
+      console.info('[MapView] Venue glow layers added:', groundLayerId, beaconLayerId);
+    } catch (e) {
+      console.warn('[MapView] Could not add venue glow layers:', e);
+    }
+  }, [mapLoaded, venuesGeoJSON]);
+
+  // Toggle venue glow visibility based on navigation mode
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+
+    const groundLayerId = 'venues-glow-ground';
+    const beaconLayerId = 'venues-glow-beacon';
+    const visibility = isNavigating ? 'none' : 'visible';
+
+    try {
+      if (map.current.getLayer(groundLayerId)) {
+        map.current.setLayoutProperty(groundLayerId, 'visibility', visibility);
+      }
+      if (map.current.getLayer(beaconLayerId)) {
+        map.current.setLayoutProperty(beaconLayerId, 'visibility', visibility);
+      }
+    } catch (e) {
+      // Layer might not exist yet, ignore
+    }
+  }, [mapLoaded, isNavigating]);
+
   // Add/remove venue markers based on zoom level
   // SMART MARKER SYSTEM: Bruker markerVenues (zoom-basert utvalg) i stedet for alle venues
   useEffect(() => {
