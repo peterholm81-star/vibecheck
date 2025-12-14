@@ -15,10 +15,10 @@ if (!MAPBOX_TOKEN) {
 
 /**
  * Map style URL
- * Uses custom style from env, or falls back to Mapbox dark theme
+ * Uses custom style from env, or falls back to colorful Mapbox streets
  */
 export const MAP_STYLE =
-  import.meta.env.VITE_MAPBOX_STYLE_URL || 'mapbox://styles/mapbox/dark-v11';
+  import.meta.env.VITE_MAPBOX_STYLE_URL || 'mapbox://styles/mapbox/streets-v12';
 
 /**
  * Default map center (Trondheim sentrum)
