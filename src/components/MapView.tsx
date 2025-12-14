@@ -18,13 +18,6 @@ import {
   MAP_STYLE,
   DEFAULT_CENTER,
   DEFAULT_ZOOM,
-  PITCH_2D,
-  PITCH_3D_MAX,
-  PITCH_3D_START_ZOOM,
-  PITCH_3D_FULL_ZOOM,
-  BEARING_2D,
-  BEARING_3D,
-  ENABLE_3D_BUILDINGS,
   HEATMAP_COLORS,
   HEATMAP_RADIUS,
   HEATMAP_INTENSITY,
@@ -66,10 +59,24 @@ const MAX_MARKERS_RECOMMENDED = 8;
 const MAX_MARKERS_EXTENDED = 25;
 
 // ============================================
+// STUDIO STYLE MODE (feature flag)
+// ============================================
+// When true: Studio style controls all visuals (3D buildings, fog, lighting)
+// No runtime addLayer for 3D, no setFog/setLight overrides
+const STUDIO_STYLE_IS_SOURCE_OF_TRUTH = true;
+
+// ============================================
+// SMOOTH ZOOM → PITCH CONFIGURATION
+// ============================================
+const PITCH_ZOOM_START = 13.2;  // Start tilting at this zoom
+const PITCH_ZOOM_END = 16.0;    // Full tilt at this zoom
+const PITCH_MAX = 55;           // Maximum pitch in degrees
+const BEARING_MAX = -15;        // Slight rotation at max 3D
+
+// ============================================
 // DESKTOP SCROLL ZOOM TUNING
 // ============================================
-const ENABLE_FAST_WHEEL_ZOOM = true;
-const WHEEL_ZOOM_RATE = 1 / 120;
+const WHEEL_ZOOM_RATE = 1 / 450; // More responsive wheel zoom
 
 /**
  * Beregn marker-modus fra zoom-nivå
@@ -521,65 +528,87 @@ export function MapView({
   }), [heatmapData]);
 
   // ============================================
-  // DYNAMIC 3D VIEW: Adjusts pitch/bearing based on zoom
+  // SMOOTH ZOOM → PITCH TRANSITION
   // ============================================
   
-  // Track last applied pitch/bearing to avoid unnecessary updates
-  const lastPitchRef = useRef<number>(PITCH_2D);
-  const lastBearingRef = useRef<number>(BEARING_2D);
+  // Track last applied values + pending RAF for throttling
+  const lastPitchRef = useRef<number>(0);
+  const lastBearingRef = useRef<number>(0);
+  const pendingUpdateRef = useRef<number | null>(null);
   
   /**
-   * Updates camera pitch and bearing based on current zoom level.
-   * - Low zoom: flat 2D view
-   * - High zoom: tilted 3D perspective
-   * - Navigation mode: extra tilt for immersion
-   * - Uses epsilon check to avoid micro-updates for smoother performance
+   * Smoothstep function: smooth ease-in/ease-out
+   * t*t*(3 - 2*t) gives S-curve from 0 to 1
    */
-  const updateViewForZoom = (mapInstance: mapboxgl.Map, navigating: boolean) => {
-    const z = mapInstance.getZoom();
-    const EPSILON = 0.1; // Only update if change > 0.1 degrees
-
-    let targetPitch: number;
-    let targetBearing: number;
-
-    // Below start zoom: completely flat 2D
-    if (z <= PITCH_3D_START_ZOOM) {
-      targetPitch = PITCH_2D;
-      targetBearing = BEARING_2D;
+  const smoothstep = (t: number): number => t * t * (3 - 2 * t);
+  
+  /**
+   * Calculate target pitch based on zoom using smoothstep curve.
+   * - Below PITCH_ZOOM_START: flat (0°)
+   * - Above PITCH_ZOOM_END: max tilt (PITCH_MAX)
+   * - Between: smooth S-curve interpolation
+   */
+  const calculatePitchForZoom = (zoom: number, navigating: boolean): number => {
+    if (zoom <= PITCH_ZOOM_START) return 0;
+    if (zoom >= PITCH_ZOOM_END) {
+      // Navigation mode: ensure minimum pitch
+      return navigating ? Math.max(50, PITCH_MAX) : PITCH_MAX;
     }
-    // Above full zoom: maximum 3D
-    else if (z >= PITCH_3D_FULL_ZOOM) {
-      targetPitch = navigating ? Math.max(50, PITCH_3D_MAX) : PITCH_3D_MAX;
-      targetBearing = BEARING_3D;
+    
+    const t = (zoom - PITCH_ZOOM_START) / (PITCH_ZOOM_END - PITCH_ZOOM_START);
+    const smooth = smoothstep(Math.max(0, Math.min(1, t)));
+    const basePitch = smooth * PITCH_MAX;
+    
+    // Navigation boost
+    return navigating ? Math.max(45, basePitch) : basePitch;
+  };
+  
+  /**
+   * Calculate target bearing based on zoom using smoothstep curve.
+   */
+  const calculateBearingForZoom = (zoom: number): number => {
+    if (zoom <= PITCH_ZOOM_START) return 0;
+    if (zoom >= PITCH_ZOOM_END) return BEARING_MAX;
+    
+    const t = (zoom - PITCH_ZOOM_START) / (PITCH_ZOOM_END - PITCH_ZOOM_START);
+    const smooth = smoothstep(Math.max(0, Math.min(1, t)));
+    return smooth * BEARING_MAX;
+  };
+  
+  /**
+   * Throttled camera update using requestAnimationFrame + easeTo for smoothness.
+   * Only updates if pitch/bearing changed significantly (epsilon check).
+   */
+  const scheduleViewUpdate = (mapInstance: mapboxgl.Map, navigating: boolean) => {
+    // Cancel any pending update
+    if (pendingUpdateRef.current !== null) {
+      cancelAnimationFrame(pendingUpdateRef.current);
     }
-    // Between: linear interpolation
-    else {
-      const t = (z - PITCH_3D_START_ZOOM) / (PITCH_3D_FULL_ZOOM - PITCH_3D_START_ZOOM);
-      targetPitch = PITCH_2D + t * (PITCH_3D_MAX - PITCH_2D);
-      targetBearing = BEARING_2D + t * (BEARING_3D - BEARING_2D);
-
-      // Navigation boost: ensure minimum pitch of 45° when navigating
-      if (navigating) {
-        targetPitch = Math.max(45, targetPitch);
+    
+    pendingUpdateRef.current = requestAnimationFrame(() => {
+      pendingUpdateRef.current = null;
+      if (!mapInstance) return;
+      
+      const zoom = mapInstance.getZoom();
+      const targetPitch = calculatePitchForZoom(zoom, navigating);
+      const targetBearing = calculateBearingForZoom(zoom);
+      
+      const EPSILON = 0.5; // Only ease if change is noticeable
+      const pitchDelta = Math.abs(targetPitch - lastPitchRef.current);
+      const bearingDelta = Math.abs(targetBearing - lastBearingRef.current);
+      
+      if (pitchDelta > EPSILON || bearingDelta > EPSILON) {
+        mapInstance.easeTo({
+          pitch: targetPitch,
+          bearing: targetBearing,
+          duration: 150,
+          easing: (t) => t * (2 - t), // ease-out quad
+          essential: true,
+        });
+        lastPitchRef.current = targetPitch;
+        lastBearingRef.current = targetBearing;
       }
-    }
-
-    // Only update if change exceeds epsilon (smoother, less stuttering)
-    const pitchDelta = Math.abs(targetPitch - lastPitchRef.current);
-    const bearingDelta = Math.abs(targetBearing - lastBearingRef.current);
-
-    if (pitchDelta > EPSILON) {
-      mapInstance.setPitch(targetPitch);
-      lastPitchRef.current = targetPitch;
-    }
-
-    if (bearingDelta > EPSILON) {
-      mapInstance.setBearing(targetBearing);
-      lastBearingRef.current = targetBearing;
-    }
-
-    // Debug logging (uncomment to troubleshoot)
-    // console.log('[Zoom debug]', z.toFixed(2), targetPitch.toFixed(1), targetBearing.toFixed(1));
+    });
   };
 
   // Initialize map
@@ -591,8 +620,8 @@ export function MapView({
       style: MAP_STYLE,
       center: DEFAULT_CENTER,
       zoom: DEFAULT_ZOOM,
-      pitch: PITCH_2D,      // Start flat, will adjust based on zoom
-      bearing: BEARING_2D,
+      pitch: 0,      // Start flat, smoothstep curve handles 3D transition
+      bearing: 0,
       antialias: true,
       attributionControl: false,
     });
@@ -614,25 +643,22 @@ export function MapView({
       'top-right'
     );
 
-    // Tune scroll wheel zoom for faster desktop experience
-    if (ENABLE_FAST_WHEEL_ZOOM) {
-      try {
-        map.current.scrollZoom.enable();
-        // Faster wheel zoom on mouse wheels (keeps pinch/touch sane)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const scrollZoom = map.current.scrollZoom as any;
-        if (scrollZoom.setWheelZoomRate) scrollZoom.setWheelZoomRate(WHEEL_ZOOM_RATE);
-        if (scrollZoom.setZoomRate) scrollZoom.setZoomRate(1);
-      } catch (e) {
-        if (import.meta.env.DEV) console.warn('[MapView] scrollZoom tuning failed', e);
-      }
+    // Tune scroll wheel zoom for responsive desktop experience
+    try {
+      map.current.scrollZoom.enable();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const scrollZoom = map.current.scrollZoom as any;
+      if (scrollZoom.setWheelZoomRate) scrollZoom.setWheelZoomRate(WHEEL_ZOOM_RATE);
+      if (scrollZoom.setZoomRate) scrollZoom.setZoomRate(1 / 100);
+    } catch (e) {
+      if (import.meta.env.DEV) console.warn('[MapView] scrollZoom tuning failed', e);
     }
 
-    // Continuous zoom handler: updates both zoom state AND pitch/bearing in real-time
+    // Continuous zoom handler: updates zoom state + schedules smooth pitch/bearing update
     const handleZoom = () => {
       if (!map.current) return;
       setCurrentZoom(map.current.getZoom());
-      updateViewForZoom(map.current, isNavigating);
+      scheduleViewUpdate(map.current, isNavigating);
     };
     map.current.on('zoom', handleZoom);
 
@@ -640,67 +666,21 @@ export function MapView({
     map.current.on('load', () => {
       if (!map.current) return;
 
-      // Set initial view based on current zoom
-      updateViewForZoom(map.current, isNavigating);
-
-      // Configure 3D lighting for better depth perception
-      try {
-        map.current.setLight({
-          anchor: 'viewport',
-          color: '#ffe6cc',
-          intensity: 0.4,
-        });
-      } catch (e) {
-        console.warn('[Mapbox 3D] Could not set lighting:', e);
+      // Logging for verification
+      console.info('[MapView] Using style:', map.current.getStyle()?.sprite ? 'loaded' : 'loading', MAP_STYLE);
+      if (STUDIO_STYLE_IS_SOURCE_OF_TRUTH) {
+        console.info('[MapView] Studio style mode enabled (no runtime layers/fog/light)');
       }
+      console.info('[MapView] Zoom→Pitch curve active');
 
-      // Add 3D buildings layer if enabled
-      if (ENABLE_3D_BUILDINGS) {
-        try {
-          const style = map.current.getStyle();
-          const layers = style?.layers || [];
+      // Set initial view based on current zoom (using smoothstep)
+      scheduleViewUpdate(map.current, isNavigating);
 
-          // Find first label layer to insert 3D buildings underneath
-          const labelLayer = layers.find(
-            (layer) =>
-              layer.type === 'symbol' &&
-              layer.layout &&
-              (layer.layout as Record<string, unknown>)['text-field']
-          );
-          const labelLayerId = labelLayer?.id;
-
-          // Only add if not already present
-          if (!map.current.getLayer('3d-buildings')) {
-            map.current.addLayer(
-              {
-                id: '3d-buildings',
-                source: 'composite',
-                'source-layer': 'building',
-                filter: ['==', 'extrude', 'true'],
-                type: 'fill-extrusion',
-                minzoom: 15,
-                paint: {
-                  'fill-extrusion-color': '#a9b3c5',
-                  'fill-extrusion-height': [
-                    'interpolate',
-                    ['linear'],
-                    ['zoom'],
-                    15,
-                    0,
-                    15.05,
-                    ['get', 'height'],
-                  ],
-                  'fill-extrusion-base': ['get', 'min_height'],
-                  'fill-extrusion-opacity': 0.85,
-                },
-              },
-              labelLayerId
-            );
-          }
-        } catch (e) {
-          console.warn('[Mapbox 3D] Could not add 3D buildings:', e);
-        }
-      }
+      // NOTE: When STUDIO_STYLE_IS_SOURCE_OF_TRUTH is true, we do NOT:
+      // - setLight() - Studio controls lighting
+      // - setFog() - Studio controls atmosphere
+      // - addLayer('3d-buildings') - Studio provides 3D buildings via its own layers
+      // This prevents "source composite not found" errors and style conflicts.
 
       // Add user position glow layers
       try {
@@ -743,6 +723,11 @@ export function MapView({
     });
 
     return () => {
+      // Cancel any pending pitch/bearing animation frame
+      if (pendingUpdateRef.current !== null) {
+        cancelAnimationFrame(pendingUpdateRef.current);
+        pendingUpdateRef.current = null;
+      }
       if (map.current) {
         map.current.off('zoom', handleZoom);
         map.current.remove();
@@ -781,7 +766,7 @@ export function MapView({
   // Update pitch/bearing when navigation mode changes
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
-    updateViewForZoom(map.current, isNavigating);
+    scheduleViewUpdate(map.current, isNavigating);
   }, [mapLoaded, isNavigating]);
 
   // Add/update heatmap layer when map is loaded and data changes
