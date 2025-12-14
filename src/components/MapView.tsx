@@ -65,6 +65,12 @@ const ZOOM_THRESHOLD_EXTENDED = 14.5;    // Over dette: flere markører
 const MAX_MARKERS_RECOMMENDED = 8;
 const MAX_MARKERS_EXTENDED = 25;
 
+// ============================================
+// DESKTOP SCROLL ZOOM TUNING
+// ============================================
+const ENABLE_FAST_WHEEL_ZOOM = true;
+const WHEEL_ZOOM_RATE = 1 / 120;
+
 /**
  * Beregn marker-modus fra zoom-nivå
  */
@@ -607,6 +613,20 @@ export function MapView({
       new mapboxgl.NavigationControl({ showCompass: false }),
       'top-right'
     );
+
+    // Tune scroll wheel zoom for faster desktop experience
+    if (ENABLE_FAST_WHEEL_ZOOM) {
+      try {
+        map.current.scrollZoom.enable();
+        // Faster wheel zoom on mouse wheels (keeps pinch/touch sane)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const scrollZoom = map.current.scrollZoom as any;
+        if (scrollZoom.setWheelZoomRate) scrollZoom.setWheelZoomRate(WHEEL_ZOOM_RATE);
+        if (scrollZoom.setZoomRate) scrollZoom.setZoomRate(1);
+      } catch (e) {
+        if (import.meta.env.DEV) console.warn('[MapView] scrollZoom tuning failed', e);
+      }
+    }
 
     // Continuous zoom handler: updates both zoom state AND pitch/bearing in real-time
     const handleZoom = () => {
