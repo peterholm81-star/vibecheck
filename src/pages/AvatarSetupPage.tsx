@@ -81,6 +81,8 @@ export function AvatarSetupPage({ onComplete, onBack }: AvatarSetupPageProps) {
 
   // Handle save
   const handleSave = async () => {
+    console.log('[AvatarSetup] SAVE CLICKED', { href: window.location.href });
+    
     if (!isValid) return;
     
     setIsSaving(true);
@@ -97,20 +99,23 @@ export function AvatarSetupPage({ onComplete, onBack }: AvatarSetupPageProps) {
         energy,
       });
 
+      console.log('[AvatarSetup] completeAvatarSetup result:', result);
+
       if (result.success) {
         // Read returnTo from URL params
         const params = new URLSearchParams(window.location.search);
         const returnToEncoded = params.get('returnTo');
+        console.log('[AvatarSetup] returnTo param raw =', returnToEncoded);
         
         if (returnToEncoded) {
           // Decode and navigate to returnTo
           const returnTo = decodeURIComponent(returnToEncoded);
-          console.debug('[AvatarSetup] returnTo:', returnToEncoded, '→ navigating to:', returnTo);
+          console.log('[AvatarSetup] BRANCH: returnTo exists, navigating to:', returnTo);
           window.history.replaceState({}, '', returnTo);
           window.location.reload();
         } else {
           // Fallback: use onComplete (navigates to home/map)
-          console.debug('[AvatarSetup] No returnTo, using onComplete fallback');
+          console.log('[AvatarSetup] BRANCH: No returnTo, calling onComplete fallback');
           onComplete();
         }
       } else {
