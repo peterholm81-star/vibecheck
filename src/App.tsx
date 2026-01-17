@@ -6,6 +6,7 @@ import { ensureAnonymousUser } from './lib/auth/ensureAnonymousUser';
 // LoginPage kept for potential admin use: import { LoginPage } from './pages/LoginPage';
 import { AdminApp } from './apps/AdminApp';
 import { InsightsApp } from './apps/InsightsApp';
+import { AvatarSetupPage } from './pages/AvatarSetupPage';
 import { getVenues, getRecentCheckIns } from './api';
 import { MapView } from './components/MapView';
 import { VenueList } from './components/VenueList';
@@ -16,6 +17,7 @@ import { MobileFilters } from './components/MobileFilters';
 // Legacy onboarding kept for reference: import { Onboarding } from './components/Onboarding';
 import { OnboardingPage } from './features/onboarding/OnboardingPage';
 import { checkOnboardingComplete } from './lib/vibeUsers';
+import { checkAvatarSetupComplete } from './lib/avatarProfile';
 import { ToastContainer } from './components/Toast';
 import { useProfile, type AgeBand } from './hooks/useProfile';
 import { useToast } from './hooks/useToast';
@@ -105,6 +107,10 @@ function MainApp({ userId }: MainAppProps) {
     error: null,
   });
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
+  
+  // Avatar setup gating state
+  const [avatarSetupChecked, setAvatarSetupChecked] = useState(false);
+  const [hasAvatarSetup, setHasAvatarSetup] = useState(false);
   // Fixed time window - no longer user-configurable
   const timeWindowMinutes: TimeWindow = 180;
   const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>('activity');
@@ -212,6 +218,33 @@ function MainApp({ userId }: MainAppProps) {
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  // Check avatar setup status on mount
+  useEffect(() => {
+    async function checkAvatar() {
+      try {
+        const complete = await checkAvatarSetupComplete();
+        setHasAvatarSetup(complete);
+      } catch (err) {
+        console.error('[MainApp] Error checking avatar setup:', err);
+        setHasAvatarSetup(false);
+      } finally {
+        setAvatarSetupChecked(true);
+      }
+    }
+    checkAvatar();
+  }, []);
+
+  // Handle venueId query param (for return from avatar setup)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const venueIdFromUrl = params.get('venueId');
+    if (venueIdFromUrl && avatarSetupChecked && hasAvatarSetup) {
+      setSelectedVenueId(venueIdFromUrl);
+      // Clean up URL
+      window.history.replaceState({}, '', '/');
+    }
+  }, [avatarSetupChecked, hasAvatarSetup]);
 
   // ============================================
   // SMART CHECK-IN ENGINE
@@ -433,7 +466,16 @@ function MainApp({ userId }: MainAppProps) {
   };
 
   // Handle venue click from map or list
+  // Includes gating for avatar setup before entering venue details
   const handleVenueClick = (venueId: string) => {
+    // Check if avatar setup is required
+    if (avatarSetupChecked && !hasAvatarSetup) {
+      // Redirect to avatar setup with return URL
+      const returnTo = encodeURIComponent(`/?venueId=${venueId}`);
+      window.history.pushState({}, '', `/avatar-setup?returnTo=${returnTo}`);
+      window.location.reload();
+      return;
+    }
     setSelectedVenueId(venueId);
   };
 
@@ -1116,6 +1158,13 @@ function isOnboardingRoute(): boolean {
   return window.location.pathname === '/onboarding';
 }
 
+/**
+ * Check if current URL is the avatar setup route
+ */
+function isAvatarSetupRoute(): boolean {
+  return window.location.pathname === '/avatar-setup';
+}
+
 // ============================================
 // APP COMPONENT
 // ============================================
@@ -1147,6 +1196,9 @@ function App() {
   
   // Onboarding route state
   const [showOnboarding, setShowOnboarding] = useState(isOnboardingRoute());
+  
+  // Avatar setup route state
+  const [showAvatarSetup, setShowAvatarSetup] = useState(isAvatarSetupRoute());
 
   // Sjekk onboarding-status ved oppstart (Supabase + localStorage fallback)
   useEffect(() => {
@@ -1180,12 +1232,13 @@ function App() {
     checkOnboarding();
   }, []);
 
-  // Handle browser back/forward for admin, insights, and onboarding routes
+  // Handle browser back/forward for admin, insights, onboarding, and avatar-setup routes
   useEffect(() => {
     const handlePopState = () => {
       setShowAdmin(isAdminRoute());
       setShowInsights(isInsightsRoute());
       setShowOnboarding(isOnboardingRoute());
+      setShowAvatarSetup(isAvatarSetupRoute());
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -1274,6 +1327,32 @@ function App() {
   // InsightsApp handles PIN authentication via server-side validation
   if (showInsights) {
     return <InsightsApp />;
+  }
+
+  // Show avatar setup page if on /avatar-setup route
+  if (showAvatarSetup) {
+    const handleAvatarSetupComplete = () => {
+      setShowAvatarSetup(false);
+      // Navigate to returnTo param if present, otherwise go home
+      const params = new URLSearchParams(window.location.search);
+      const returnTo = params.get('returnTo');
+      if (returnTo) {
+        window.history.pushState({}, '', returnTo);
+      } else {
+        window.history.pushState({}, '', '/');
+      }
+      window.location.reload();
+    };
+    
+    return (
+      <AvatarSetupPage
+        onComplete={handleAvatarSetupComplete}
+        onBack={() => {
+          window.history.pushState({}, '', '/');
+          window.location.reload();
+        }}
+      />
+    );
   }
 
   // Auth error - show friendly error message
