@@ -7,6 +7,7 @@ import { ensureAnonymousUser } from './lib/auth/ensureAnonymousUser';
 import { AdminApp } from './apps/AdminApp';
 import { InsightsApp } from './apps/InsightsApp';
 import { AvatarSetupPage } from './pages/AvatarSetupPage';
+import { VenueRoomPage } from './pages/VenueRoomPage';
 import { getVenues, getRecentCheckIns } from './api';
 import { MapView } from './components/MapView';
 import { VenueList } from './components/VenueList';
@@ -751,6 +752,10 @@ function MainApp({ userId }: MainAppProps) {
         canCheckIn={cooldownStatus.allowed}
         nextCheckInTime={cooldownStatus.nextTime}
         onNavigate={() => startNavigationToVenue(selectedVenue)}
+        onOpenVenueRoom={() => {
+          window.history.pushState({}, '', `/venue-room/${selectedVenue.id}`);
+          window.location.reload();
+        }}
       />
     );
   }
@@ -1165,6 +1170,15 @@ function isAvatarSetupRoute(): boolean {
   return window.location.pathname === '/avatar-setup';
 }
 
+/**
+ * Check if current URL is a venue room route
+ * Returns venueId if on venue room route, null otherwise
+ */
+function getVenueRoomId(): string | null {
+  const match = window.location.pathname.match(/^\/venue-room\/([^/]+)$/);
+  return match ? match[1] : null;
+}
+
 // ============================================
 // APP COMPONENT
 // ============================================
@@ -1199,6 +1213,9 @@ function App() {
   
   // Avatar setup route state
   const [showAvatarSetup, setShowAvatarSetup] = useState(isAvatarSetupRoute());
+  
+  // Venue room route state
+  const [venueRoomId, setVenueRoomId] = useState<string | null>(getVenueRoomId());
 
   // Sjekk onboarding-status ved oppstart (Supabase + localStorage fallback)
   useEffect(() => {
@@ -1232,13 +1249,14 @@ function App() {
     checkOnboarding();
   }, []);
 
-  // Handle browser back/forward for admin, insights, onboarding, and avatar-setup routes
+  // Handle browser back/forward for admin, insights, onboarding, avatar-setup, and venue-room routes
   useEffect(() => {
     const handlePopState = () => {
       setShowAdmin(isAdminRoute());
       setShowInsights(isInsightsRoute());
       setShowOnboarding(isOnboardingRoute());
       setShowAvatarSetup(isAvatarSetupRoute());
+      setVenueRoomId(getVenueRoomId());
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -1351,6 +1369,21 @@ function App() {
           window.history.pushState({}, '', '/');
           window.location.reload();
         }}
+      />
+    );
+  }
+
+  // Show venue room page if on /venue-room/:venueId route
+  if (venueRoomId) {
+    const handleVenueRoomBack = () => {
+      setVenueRoomId(null);
+      window.history.pushState({}, '', '/');
+    };
+    
+    return (
+      <VenueRoomPage
+        venueId={venueRoomId}
+        onBack={handleVenueRoomBack}
       />
     );
   }
