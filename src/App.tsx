@@ -467,17 +467,22 @@ function MainApp({ userId }: MainAppProps) {
   };
 
   // Handle venue click from map or list
-  // Includes gating for avatar setup before entering venue details
+  // Routes to Venue Room, with avatar setup gating if needed
   const handleVenueClick = (venueId: string) => {
+    console.log('[VenueClick] venueId=', venueId, 'avatarComplete=', hasAvatarSetup);
+    
     // Check if avatar setup is required
     if (avatarSetupChecked && !hasAvatarSetup) {
-      // Redirect to avatar setup with return URL
-      const returnTo = encodeURIComponent(`/?venueId=${venueId}`);
+      // Redirect to avatar setup with return URL pointing to Venue Room
+      const returnTo = encodeURIComponent(`/venue-room/${venueId}`);
       window.history.pushState({}, '', `/avatar-setup?returnTo=${returnTo}`);
       window.location.reload();
       return;
     }
-    setSelectedVenueId(venueId);
+    
+    // Avatar is complete - go directly to Venue Room
+    window.history.pushState({}, '', `/venue-room/${venueId}`);
+    window.location.reload();
   };
 
   // Handle back from venue detail
