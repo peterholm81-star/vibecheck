@@ -236,7 +236,8 @@ export function VenueRoomPage({ venueId, onBack }: VenueRoomPageProps) {
               <p className="text-slate-400 mb-2">Du har ikke satt opp avatar ennå</p>
               <button
                 onClick={() => {
-                  window.history.pushState({}, '', `/avatar-setup?returnTo=/venue-room/${venueId}`);
+                  const returnTo = encodeURIComponent(`/venue-room/${venueId}`);
+                  window.history.pushState({}, '', `/avatar-setup?returnTo=${returnTo}`);
                   window.location.reload();
                 }}
                 className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white font-medium rounded-lg transition-colors"

@@ -98,7 +98,21 @@ export function AvatarSetupPage({ onComplete, onBack }: AvatarSetupPageProps) {
       });
 
       if (result.success) {
-        onComplete();
+        // Read returnTo from URL params
+        const params = new URLSearchParams(window.location.search);
+        const returnToEncoded = params.get('returnTo');
+        
+        if (returnToEncoded) {
+          // Decode and navigate to returnTo
+          const returnTo = decodeURIComponent(returnToEncoded);
+          console.debug('[AvatarSetup] returnTo:', returnToEncoded, '→ navigating to:', returnTo);
+          window.history.replaceState({}, '', returnTo);
+          window.location.reload();
+        } else {
+          // Fallback: use onComplete (navigates to home/map)
+          console.debug('[AvatarSetup] No returnTo, using onComplete fallback');
+          onComplete();
+        }
       } else {
         setError(result.error || 'Kunne ikke lagre. Prøv igjen.');
       }
