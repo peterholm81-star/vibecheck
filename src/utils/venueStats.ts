@@ -1,5 +1,9 @@
-import type { Venue, CheckIn, VibeScore, VenueWithStats, HeatmapMode, Gender, AgeBand, Intent } from '../types';
+import type { Venue, CheckIn, VibeScore, VenueWithStats, HeatmapMode, Gender, Intent } from '../types';
 import { INTENT_OPTIONS } from '../types';
+import { AGE_RANGES, AGE_RANGE_LABELS_SHORT, type AgeRange } from '../constants/ageRanges';
+
+// Local alias for backward compatibility
+type AgeBand = AgeRange;
 
 /**
  * Calculate statistics for venues based on check-ins
@@ -43,13 +47,8 @@ export interface DemographicsStats {
   totalAgeResponses: number;
 }
 
-export const AGE_BAND_LABELS: Record<AgeBand, string> = {
-  "18_25": "18–25",
-  "25_30": "25–30",
-  "30_35": "30–35",
-  "35_40": "35–40",
-  "40_plus": "40+",
-};
+// Re-export from single source of truth
+export const AGE_BAND_LABELS: Record<AgeBand, string> = AGE_RANGE_LABELS_SHORT;
 
 export const GENDER_LABELS_NO: Record<'male' | 'female' | 'other', string> = {
   male: "menn",
@@ -152,14 +151,10 @@ const VIBE_SCORE_VALUES: Record<VibeScore, number> = {
  * Uses gender and age_band fields from check-ins
  */
 export function calculateDemographics(checkIns: CheckIn[]): DemographicsStats {
-  // Initialize age band counts
-  const ageBandCounts: Record<AgeBand, number> = {
-    "18_25": 0,
-    "25_30": 0,
-    "30_35": 0,
-    "35_40": 0,
-    "40_plus": 0,
-  };
+  // Initialize age band counts from single source of truth
+  const ageBandCounts = Object.fromEntries(
+    AGE_RANGES.map(range => [range, 0])
+  ) as Record<AgeBand, number>;
 
   let maleCount = 0;
   let femaleCount = 0;
@@ -206,14 +201,13 @@ export function calculateDemographics(checkIns: CheckIn[]): DemographicsStats {
     }
   }
 
-  // Calculate age band percentages
-  const ageBandPct: Record<AgeBand, number> = {
-    "18_25": totalAgeResponses > 0 ? Math.round((ageBandCounts["18_25"] / totalAgeResponses) * 100) : 0,
-    "25_30": totalAgeResponses > 0 ? Math.round((ageBandCounts["25_30"] / totalAgeResponses) * 100) : 0,
-    "30_35": totalAgeResponses > 0 ? Math.round((ageBandCounts["30_35"] / totalAgeResponses) * 100) : 0,
-    "35_40": totalAgeResponses > 0 ? Math.round((ageBandCounts["35_40"] / totalAgeResponses) * 100) : 0,
-    "40_plus": totalAgeResponses > 0 ? Math.round((ageBandCounts["40_plus"] / totalAgeResponses) * 100) : 0,
-  };
+  // Calculate age band percentages from single source of truth
+  const ageBandPct = Object.fromEntries(
+    AGE_RANGES.map(range => [
+      range,
+      totalAgeResponses > 0 ? Math.round((ageBandCounts[range] / totalAgeResponses) * 100) : 0
+    ])
+  ) as Record<AgeBand, number>;
 
   // Find most common age band
   let mostCommonAgeBand: AgeBand | null = null;

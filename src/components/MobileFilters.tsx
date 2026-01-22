@@ -15,8 +15,9 @@ import { AGE_BAND_LABELS } from '../utils/venueStats';
 // Current selection is shown as a sublabel.
 // ============================================
 
-// All age bands in order (same as App.tsx)
-const AGE_BANDS_ORDER: AgeBand[] = ['18_25', '25_30', '30_35', '35_40', '40_plus'];
+// All age bands in order (from single source of truth)
+import { AGE_RANGES } from '../constants/ageRanges';
+const AGE_BANDS_ORDER = AGE_RANGES;
 
 // Mode labels for display (Norwegian) - using 👉👌 for ONS
 // Heatmap 2.0: Added party and chill modes

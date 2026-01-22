@@ -2,13 +2,20 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import type { RelationshipStatus, OnsIntent, Intent } from "../types";
 
+// Re-export age range types from single source of truth
+export { AGE_RANGES, AGE_RANGE_LABELS, type AgeRange } from "../constants/ageRanges";
+
 // ============================================
 // PROFILE TYPES
 // ============================================
 
 export type Gender = "male" | "female" | "other" | "prefer_not_to_say";
 
-export type AgeBand = "18_25" | "25_30" | "30_35" | "35_40" | "40_plus";
+/**
+ * @deprecated Use AgeRange from constants/ageRanges.ts instead
+ * Kept for backward compatibility during migration
+ */
+export type AgeBand = "18–24" | "25–34" | "35–44" | "45+";
 
 /**
  * Favorite city type - now supports any city name from the database

@@ -192,7 +192,7 @@ export function VenueList({
     if (userAgeBand) {
       return [userAgeBand];
     }
-    return ['25_30'];
+    return ['25–34'];
   }, [activeAgeBands, userAgeBand]);
 
   // Calculate stats for all venues using shared utility

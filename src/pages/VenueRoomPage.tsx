@@ -22,7 +22,7 @@ import { AvatarChip, type AvatarChipData } from '../components/venueRoom/AvatarC
 const MOCK_AVATARS: AvatarChipData[] = [
   {
     avatarGender: 'female',
-    avatarAgeRange: '25_30',
+    avatarAgeRange: '25–34',
     showRelationship: true,
     relationshipStatus: 'single',
     showOns: false,
@@ -31,7 +31,7 @@ const MOCK_AVATARS: AvatarChipData[] = [
   },
   {
     avatarGender: 'male',
-    avatarAgeRange: '30_35',
+    avatarAgeRange: '25–34',
     showRelationship: true,
     relationshipStatus: 'single',
     showOns: true,
@@ -40,7 +40,7 @@ const MOCK_AVATARS: AvatarChipData[] = [
   },
   {
     avatarGender: 'female',
-    avatarAgeRange: '18_25',
+    avatarAgeRange: '18–24',
     showRelationship: false,
     relationshipStatus: null,
     showOns: false,
@@ -49,7 +49,7 @@ const MOCK_AVATARS: AvatarChipData[] = [
   },
   {
     avatarGender: 'male',
-    avatarAgeRange: '35_40',
+    avatarAgeRange: '35–44',
     showRelationship: true,
     relationshipStatus: 'relationship',
     showOns: false,
@@ -58,7 +58,7 @@ const MOCK_AVATARS: AvatarChipData[] = [
   },
   {
     avatarGender: 'female',
-    avatarAgeRange: '25_30',
+    avatarAgeRange: '25–34',
     showRelationship: true,
     relationshipStatus: 'single',
     showOns: true,
@@ -67,7 +67,7 @@ const MOCK_AVATARS: AvatarChipData[] = [
   },
   {
     avatarGender: 'male',
-    avatarAgeRange: '25_30',
+    avatarAgeRange: '25–34',
     showRelationship: false,
     relationshipStatus: null,
     showOns: false,

@@ -8,27 +8,20 @@ import {
   RELATIONSHIP_STATUS_LABELS,
   ONS_INTENT_LABELS,
 } from '../types';
-import { useProfile, type ProfileRelationshipStatus, type AgeBand } from '../hooks/useProfile';
+import { useProfile, type ProfileRelationshipStatus } from '../hooks/useProfile';
+import { AGE_RANGES, AGE_RANGE_LABELS, type AgeRange, getAgeRangeFromBirthYear, getAgeRangeLabel } from '../constants/ageRanges';
 import { useCityVenues, VenuePoint } from '../hooks/useCityVenues';
 import { useCityName } from '../hooks/useCityName';
 import { getCityRadius } from '../config/cityRadius';
 import { DEFAULT_CENTER } from '../config/map';
 import { calculateDistanceMeters } from '../utils/geo';
-import { getAgeBandFromBirthYear, getAgeBandLabel } from '../utils/age';
 
 // ============================================
-// AGE BAND OPTIONS
+// AGE RANGE OPTIONS (from single source of truth)
 // ============================================
-// These values MUST match the database constraint exactly
-const AGE_BAND_OPTIONS: AgeBand[] = ['18_25', '25_30', '30_35', '35_40', '40_plus'];
-
-const AGE_BAND_LABELS: Record<AgeBand, string> = {
-  '18_25': '18-25 år',
-  '25_30': '25-30 år',
-  '30_35': '30-35 år',
-  '35_40': '35-40 år',
-  '40_plus': '40+ år',
-};
+const AGE_BAND_OPTIONS = AGE_RANGES;
+const AGE_BAND_LABELS = AGE_RANGE_LABELS;
+type AgeBand = AgeRange; // Local alias for compatibility
 
 // ============================================
 // HELPER: Map profile relationship status to check-in relationship status

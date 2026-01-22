@@ -1,11 +1,10 @@
 /**
  * Avatar Setup Constants
  * 
- * IMPORTANT: Age ranges MUST match the existing AgeBand type from useProfile.ts
- * to ensure consistency across the app.
+ * IMPORTANT: Age ranges use the single source of truth from constants/ageRanges.ts
  */
 
-import type { AgeBand } from '../hooks/useProfile';
+import { AGE_RANGES, AGE_RANGE_LABELS, type AgeRange } from './ageRanges';
 
 // ============================================
 // AVATAR GENDER (simplified for avatar display)
@@ -21,28 +20,16 @@ export const AVATAR_GENDER_LABELS: Record<AvatarGender, string> = {
 };
 
 // ============================================
-// AGE RANGE (reuses existing AgeBand type)
+// AGE RANGE (uses single source of truth)
 // ============================================
 
-// Re-export AgeBand type for convenience
-export type AvatarAgeRange = AgeBand;
+// Re-export from single source of truth
+export type AvatarAgeRange = AgeRange;
 
-// These MUST match the AgeBand values exactly
-export const AVATAR_AGE_RANGE_OPTIONS: AvatarAgeRange[] = [
-  '18_25',
-  '25_30',
-  '30_35',
-  '35_40',
-  '40_plus',
-];
+// These MUST match the DB constraint exactly
+export const AVATAR_AGE_RANGE_OPTIONS: readonly AgeRange[] = AGE_RANGES;
 
-export const AVATAR_AGE_RANGE_LABELS: Record<AvatarAgeRange, string> = {
-  '18_25': '18-25 år',
-  '25_30': '25-30 år',
-  '30_35': '30-35 år',
-  '35_40': '35-40 år',
-  '40_plus': '40+ år',
-};
+export const AVATAR_AGE_RANGE_LABELS: Record<AgeRange, string> = AGE_RANGE_LABELS;
 
 // ============================================
 // RELATIONSHIP STATUS (for avatar display)

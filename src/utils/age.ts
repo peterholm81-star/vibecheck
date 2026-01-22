@@ -1,44 +1,45 @@
-import type { AgeBand } from "../hooks/useProfile";
+/**
+ * Age Utilities
+ * 
+ * Re-exports from the single source of truth for backward compatibility.
+ * New code should import directly from constants/ageRanges.ts
+ */
+
+// Re-export everything from the single source of truth
+export {
+  AGE_RANGES,
+  AGE_RANGE_LABELS,
+  AGE_RANGE_LABELS_SHORT,
+  AGE_RANGE_OPTIONS,
+  type AgeRange,
+  isValidAgeRange,
+  getAgeRangeLabel,
+  getAgeRangeFromBirthYear,
+} from "../constants/ageRanges";
+
+// Legacy type alias for backward compatibility
+import type { AgeRange } from "../constants/ageRanges";
+export type AgeBand = AgeRange;
+
+// Legacy function aliases
+import { getAgeRangeFromBirthYear as _getAgeRangeFromBirthYear, getAgeRangeLabel as _getAgeRangeLabel } from "../constants/ageRanges";
 
 /**
- * Calculate age band from birth year
- * Returns null if under 18 or no birth year provided
+ * @deprecated Use getAgeRangeFromBirthYear from constants/ageRanges.ts
  */
-export function getAgeBandFromBirthYear(birthYear: number | null): AgeBand | null {
-  if (!birthYear) return null;
-
-  const now = new Date();
-  const age = now.getFullYear() - birthYear;
-
-  // Ignore under 18
-  if (age < 18) return null;
-
-  if (age <= 25) return "18_25";
-  if (age <= 30) return "25_30";
-  if (age <= 35) return "30_35";
-  if (age <= 40) return "35_40";
-  return "40_plus";
+export function getAgeBandFromBirthYear(birthYear: number | null): AgeRange | null {
+  return _getAgeRangeFromBirthYear(birthYear);
 }
 
 /**
- * Get human-readable label for age band
+ * @deprecated Use getAgeRangeLabel from constants/ageRanges.ts
  */
-export function getAgeBandLabel(ageBand: AgeBand | null): string {
-  if (!ageBand) return "Ikke oppgitt";
-  
-  const labels: Record<AgeBand, string> = {
-    "18_25": "18-25 år",
-    "25_30": "25-30 år",
-    "30_35": "30-35 år",
-    "35_40": "35-40 år",
-    "40_plus": "40+ år",
-  };
-  
-  return labels[ageBand];
+export function getAgeBandLabel(ageBand: AgeRange | null): string {
+  return _getAgeRangeLabel(ageBand);
 }
 
 /**
- * Generate birth year options (1980 to current year - 18)
+ * Generate birth year options (1960 to current year - 18)
  */
 export function getBirthYearOptions(): number[] {
   const currentYear = new Date().getFullYear();

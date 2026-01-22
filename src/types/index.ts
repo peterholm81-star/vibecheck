@@ -26,8 +26,12 @@ export const VENUE_CATEGORY_LABELS: Record<VenueCategory, string> = {
 // CHECK-IN TYPES
 // ============================================
 
-// Re-export AgeBand and Gender types for convenience
-export type { AgeBand, Gender } from '../hooks/useProfile';
+// Re-export Age Range from single source of truth
+export { AGE_RANGES, AGE_RANGE_LABELS, type AgeRange } from '../constants/ageRanges';
+// Re-export Gender type for convenience
+export type { Gender } from '../hooks/useProfile';
+// Legacy alias for backward compatibility
+export type AgeBand = import('../constants/ageRanges').AgeRange;
 
 export interface CheckIn {
   id: string;
@@ -38,7 +42,7 @@ export interface CheckIn {
   relationshipStatus: RelationshipStatus | null;
   onsIntent: OnsIntent | null;
   gender: import('../hooks/useProfile').Gender | null;
-  ageBand: import('../hooks/useProfile').AgeBand | null;
+  ageBand: import('../constants/ageRanges').AgeRange | null;
   createdAt: string;
 }
 

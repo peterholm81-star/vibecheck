@@ -43,8 +43,9 @@ interface MainAppState {
   error: string | null;
 }
 
-// All age bands in order
-const AGE_BANDS_ORDER: AgeBand[] = ['18_25', '25_30', '30_35', '35_40', '40_plus'];
+// All age bands in order (from single source of truth)
+import { AGE_RANGES } from './constants/ageRanges';
+const AGE_BANDS_ORDER = AGE_RANGES;
 
 // Cooldown duration in hours
 const CHECKIN_COOLDOWN_HOURS = 3;
