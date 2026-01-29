@@ -302,16 +302,16 @@ export function VenueList({
   const getSortingInfoText = () => {
     if (localSortMode === 'intent') {
       if (activeIntents.length > 0) {
-        return `Sorterer etter steder med flest gjester i valgt stemning (${getIntentLabelsText()})`;
+        return `Sorting by venues with most guests matching selected vibe (${getIntentLabelsText()})`;
       }
-      return 'Sorterer etter steder med sterkest dominerende stemning';
+      return 'Sorting by venues with strongest dominant vibe';
     }
     if (localSortMode === 'age') {
       if (activeAgeBands.length > 0) {
-        return `Sorterer etter steder med flest gjester i valgt aldersgruppe (${getAgeBandLabelsText()})`;
+        return `Sorting by venues with most guests in selected age group (${getAgeBandLabelsText()})`;
       }
       if (userAgeBand) {
-        return `Sorterer etter steder med flest gjester i din aldersgruppe (${AGE_BAND_LABELS[userAgeBand]})`;
+        return `Sorting by venues with most guests in your age group (${AGE_BAND_LABELS[userAgeBand]})`;
       }
     }
     return '';

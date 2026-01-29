@@ -1,4 +1,7 @@
 import { supabase } from './supabase';
+import { getCurrentUserId } from './auth/getCurrentUserId';
+import { hasVibeUsersRow } from './vibeUsers';
+import { AGE_RANGES, type AgeRange, isValidAgeRange } from '../constants/ageRanges';
 
 // ============================================
 // VIBE SCORE MAPPING
@@ -71,17 +74,22 @@ export type Venue = {
 
 /**
  * Payload for creating a new check-in.
+ * Note: userId is derived from auth.uid() internally for security.
  */
 export type CheckInPayload = {
-  userId: string;
   venueId: string;
   intent: string;              // e.g. "solo", "party", "with_friends"
   vibeScore?: string | number; // e.g. "hot", "good", "ok", "quiet" or numeric
   relationshipStatus?: string | null;
   onsIntent?: string | null;
   gender?: string | null;
-  ageBand?: string | null;
+  ageBand?: AgeRange | string | null; // Must match AGE_RANGES values
   timestamp?: string;          // optional override, otherwise use now()
+};
+
+// Legacy type for backwards compatibility (userId passed but ignored)
+export type CheckInPayloadLegacy = CheckInPayload & {
+  userId?: string; // Deprecated: user_id is derived from auth.uid()
 };
 
 // ============================================
@@ -171,16 +179,32 @@ export async function ensureVenueForExternalPlace(
 /**
  * Creates a new check-in in the database.
  * 
+ * IMPORTANT: This function:
+ * 1. Uses auth.uid() for user_id (not caller-provided)
+ * 2. Requires user to have completed onboarding (vibe_users row exists)
+ * 3. Validates age_band against AGE_RANGES constant
+ * 
  * @param payload - The check-in data
- * @throws CheckInError if Supabase is not configured or insert fails
+ * @throws CheckInError if not authenticated, onboarding incomplete, or insert fails
  */
-export async function createCheckIn(payload: CheckInPayload): Promise<void> {
+export async function createCheckIn(payload: CheckInPayload | CheckInPayloadLegacy): Promise<void> {
   if (!supabase) {
     throw new CheckInError('Supabase is not configured. Cannot create check-in.');
   }
 
+  // 1. Get user_id from auth.uid() (ignore any userId in payload)
+  const userId = await getCurrentUserId();
+  if (!userId) {
+    throw new CheckInError('Not authenticated. Please sign in.');
+  }
+
+  // 2. Guard: Require vibe_users row (onboarding complete)
+  const hasProfile = await hasVibeUsersRow();
+  if (!hasProfile) {
+    throw new CheckInError('Onboarding not complete. Please complete onboarding first.');
+  }
+
   const {
-    userId,
     venueId,
     intent,
     vibeScore,
@@ -191,19 +215,33 @@ export async function createCheckIn(payload: CheckInPayload): Promise<void> {
     timestamp,
   } = payload;
 
+  // 3. Validate age_band against allowed values
+  let validatedAgeBand: string | null = null;
+  if (ageBand) {
+    if (isValidAgeRange(ageBand)) {
+      validatedAgeBand = ageBand;
+    } else {
+      console.warn(`[CheckIn] Invalid age_band "${ageBand}", must be one of: ${AGE_RANGES.join(', ')}`);
+      // Don't fail, just nullify invalid values
+      validatedAgeBand = null;
+    }
+  }
+
   // Map payload fields to database columns explicitly
   // Convert vibeScore string (e.g. "hot") to integer for the database
   const insertData = {
-    user_id: userId,
+    user_id: userId, // Always use auth.uid()
     venue_id: venueId,
     intent: intent,
     vibe_score: vibeScoreToInt(vibeScore),
     relationship_status: relationshipStatus ?? null,
     ons_intent: onsIntent ?? null,
     gender: gender ?? null,
-    age_band: ageBand ?? null,
+    age_band: validatedAgeBand,
     created_at: timestamp ?? new Date().toISOString(),
   };
+
+  console.log('[CheckIn] Creating check-in:', { userId, venueId, intent, ageBand: validatedAgeBand });
 
   const { error } = await supabase
     .from('check_ins')
@@ -221,19 +259,21 @@ export async function createCheckIn(payload: CheckInPayload): Promise<void> {
  * High-level convenience function for checking in at an external place.
  * 
  * 1. Ensures the venue exists (creates it if needed)
- * 2. Creates the check-in record
+ * 2. Creates the check-in record (user_id comes from auth.uid())
  * 
- * @param userId - The ID of the user checking in
+ * Note: userId parameter is deprecated and ignored. User ID is derived from auth.uid().
+ * 
+ * @param _userId - DEPRECATED: ignored, user_id comes from auth.uid()
  * @param externalPlace - The place data from external provider
  * @param intent - What the user is looking for (e.g. "party", "chill")
  * @param extra - Additional optional check-in data
- * @throws CheckInError if any step fails
+ * @throws CheckInError if not authenticated, onboarding incomplete, or any step fails
  * 
  * @example
  * ```ts
  * // From a mobile check-in screen:
  * await checkInWithExternalPlace(
- *   currentUser.id,
+ *   null, // userId ignored
  *   {
  *     externalPlaceId: googlePlace.place_id,
  *     name: googlePlace.name,
@@ -245,17 +285,17 @@ export async function createCheckIn(payload: CheckInPayload): Promise<void> {
  *   },
  *   'party',
  *   {
- *     vibeScore: 4,
+ *     vibeScore: 'good',
  *     relationshipStatus: 'single',
  *     onsIntent: 'maybe',
  *     gender: 'male',
- *     ageBand: '25_30',
+ *     ageBand: '25–34', // Must match AGE_RANGES
  *   }
  * );
  * ```
  */
 export async function checkInWithExternalPlace(
-  userId: string,
+  _userId: string | null, // Deprecated: ignored
   externalPlace: ExternalPlace,
   intent: string,
   extra?: {
@@ -263,16 +303,15 @@ export async function checkInWithExternalPlace(
     relationshipStatus?: string | null;
     onsIntent?: string | null;
     gender?: string | null;
-    ageBand?: string | null;
+    ageBand?: AgeRange | string | null;
     timestamp?: string;
   }
 ): Promise<void> {
   // 1) Ensure venue exists (creates it if needed)
   const venue = await ensureVenueForExternalPlace(externalPlace);
 
-  // 2) Create the check-in
+  // 2) Create the check-in (user_id comes from auth.uid() inside createCheckIn)
   await createCheckIn({
-    userId,
     venueId: venue.id,
     intent,
     vibeScore: extra?.vibeScore,

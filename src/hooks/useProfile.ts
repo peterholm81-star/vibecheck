@@ -54,6 +54,9 @@ export interface UserProfile {
   
   // Notification preferences
   allowNotifications: boolean;
+  
+  // One-time popup tracking
+  profileReadyPopupSeen: boolean;
 }
 
 /**
@@ -79,6 +82,7 @@ interface ProfileDbRow {
   show_as_single: boolean;
   smart_checkin_enabled: boolean;
   allow_notifications: boolean;
+  profile_ready_popup_seen: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -97,6 +101,7 @@ const emptyProfile: UserProfile = {
   showAsSingle: false,
   smartCheckinEnabled: false,
   allowNotifications: false,
+  profileReadyPopupSeen: false,
 };
 
 const emptyLocalPrefs: LocalPreferences = {
@@ -162,6 +167,7 @@ function dbRowToProfile(row: ProfileDbRow): UserProfile {
     showAsSingle: row.show_as_single ?? false,
     smartCheckinEnabled: row.smart_checkin_enabled ?? false,
     allowNotifications: row.allow_notifications ?? false,
+    profileReadyPopupSeen: row.profile_ready_popup_seen ?? false,
   };
 }
 
@@ -191,6 +197,9 @@ function profileToDbUpdates(updates: Partial<UserProfile>): Record<string, unkno
   }
   if (updates.allowNotifications !== undefined) {
     dbUpdates.allow_notifications = updates.allowNotifications;
+  }
+  if (updates.profileReadyPopupSeen !== undefined) {
+    dbUpdates.profile_ready_popup_seen = updates.profileReadyPopupSeen;
   }
   
   return dbUpdates;
@@ -447,6 +456,7 @@ export function useCombinedProfile() {
     showAsSingle: profile?.showAsSingle ?? false,
     smartCheckinEnabled: profile?.smartCheckinEnabled ?? false,
     allowNotifications: profile?.allowNotifications ?? false,
+    profileReadyPopupSeen: profile?.profileReadyPopupSeen ?? false,
     // Local preferences (from localStorage)
     ...localPrefs,
   };
@@ -463,6 +473,7 @@ export function useCombinedProfile() {
     if (updates.showAsSingle !== undefined) profileUpdates.showAsSingle = updates.showAsSingle;
     if (updates.smartCheckinEnabled !== undefined) profileUpdates.smartCheckinEnabled = updates.smartCheckinEnabled;
     if (updates.allowNotifications !== undefined) profileUpdates.allowNotifications = updates.allowNotifications;
+    if (updates.profileReadyPopupSeen !== undefined) profileUpdates.profileReadyPopupSeen = updates.profileReadyPopupSeen;
 
     if (updates.defaultRelationshipStatus !== undefined) localUpdates.defaultRelationshipStatus = updates.defaultRelationshipStatus;
     if (updates.defaultOnsIntent !== undefined) localUpdates.defaultOnsIntent = updates.defaultOnsIntent;

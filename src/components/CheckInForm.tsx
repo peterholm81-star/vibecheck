@@ -186,7 +186,7 @@ export function CheckInForm({ venues: propsVenues, selectedVenueId, onSubmit }: 
       // Age band: derive from profile.birthYear
       // Values MUST be exactly: "18_25", "25_30", "30_35", "35_40", "40_plus", or null
       if (profile?.birthYear) {
-        const derivedAgeBand = getAgeBandFromBirthYear(profile.birthYear);
+        const derivedAgeBand = getAgeRangeFromBirthYear(profile.birthYear);
         setAgeBand(derivedAgeBand);
       }
       
@@ -222,7 +222,7 @@ export function CheckInForm({ venues: propsVenues, selectedVenueId, onSubmit }: 
         );
         setOnsIntent(localPrefs.defaultOnsIntent);
         // Re-apply age band from profile
-        setAgeBand(profile?.birthYear ? getAgeBandFromBirthYear(profile.birthYear) : null);
+        setAgeBand(profile?.birthYear ? getAgeRangeFromBirthYear(profile.birthYear) : null);
         setFormState('idle');
       }, 2000);
     } catch (err) {
@@ -272,7 +272,7 @@ export function CheckInForm({ venues: propsVenues, selectedVenueId, onSubmit }: 
                 disabled={formState === 'submitting'}
                 className="w-full px-4 py-3.5 sm:py-3 bg-slate-700 border border-slate-600 rounded-xl sm:rounded-lg text-base sm:text-sm text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 disabled:opacity-50 disabled:cursor-not-allowed appearance-none"
               >
-                <option value="">Velg et utested ({venues.length} i {displayCityName})</option>
+                <option value="">Select a venue ({venues.length} in {displayCityName})</option>
                 {venues.map((venue) => (
                   <option key={venue.id} value={venue.id}>
                     {venue.name}

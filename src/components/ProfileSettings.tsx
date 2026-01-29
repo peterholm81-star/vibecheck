@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { User, Save, CheckCircle, MapPin, Heart, Zap, AlertCircle, RefreshCw, MapPinOff, Bell, MessageSquare } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { User, Save, CheckCircle, MapPin, Heart, Zap, AlertCircle, RefreshCw, MapPinOff, Bell, MessageSquare, Map, X } from 'lucide-react';
 import { ShareVibeCheckButton } from './ShareVibeCheckButton';
 import { FeedbackModal } from './FeedbackModal';
 import {
@@ -26,12 +26,21 @@ import {
 } from '../types';
 import { getBirthYearOptions, getAgeBandFromBirthYear, getAgeBandLabel } from '../utils/age';
 import { getCities, City } from '../api/cities';
+import { supabase } from '../lib/supabase';
+import { getCurrentUserId } from '../lib/auth/getCurrentUserId';
 
 // ============================================
 // PROFILE SETTINGS COMPONENT
 // ============================================
 
-export function ProfileSettings() {
+interface ProfileSettingsProps {
+  /** Callback to navigate to map tab after first profile completion */
+  onNavigateToMap?: () => void;
+  /** Callback to refetch profile gate after profile save (refreshes gating state) */
+  onProfileSaved?: () => Promise<void>;
+}
+
+export function ProfileSettings({ onNavigateToMap, onProfileSaved }: ProfileSettingsProps) {
   const {
     profile,
     localPrefs,
@@ -73,6 +82,12 @@ export function ProfileSettings() {
   
   // Feedback modal state
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  
+  // Profile ready modal state (shows once after first profile completion)
+  const [showProfileReadyModal, setShowProfileReadyModal] = useState(false);
+  
+  // Track whether avatar was complete before this save (to detect first completion)
+  const wasAvatarCompleteBeforeSave = useRef<boolean | null>(null);
 
   // ============================================
   // CHECK GEOLOCATION PERMISSION
@@ -144,6 +159,97 @@ export function ProfileSettings() {
   }, []);
 
   // ============================================
+  // SYNC TO VIBE_USERS (for avatar)
+  // ============================================
+  
+  /**
+   * Check if avatar_setup_complete is true in vibe_users
+   */
+  const checkAvatarSetupComplete = async (): Promise<boolean> => {
+    if (!supabase) return false;
+    
+    const userId = await getCurrentUserId();
+    if (!userId) return false;
+    
+    const { data, error } = await supabase
+      .from('vibe_users')
+      .select('avatar_setup_complete')
+      .eq('anon_user_id', userId)
+      .maybeSingle();
+    
+    if (error || !data) return false;
+    return data.avatar_setup_complete ?? false;
+  };
+  
+  /**
+   * Sync gender and age to vibe_users table when profile is saved.
+   * This ensures avatar reflects profile data and marks avatar_setup_complete.
+   * Returns true if avatar_setup_complete is now true.
+   */
+  const syncToVibeUsers = async (savedGender: Gender | null, savedBirthYear: number | null): Promise<boolean> => {
+    if (!supabase) return false;
+    
+    const userId = await getCurrentUserId();
+    if (!userId) return false;
+    
+    // Map gender to avatar_gender (male/female only)
+    let avatarGender: 'male' | 'female' | null = null;
+    if (savedGender === 'male') avatarGender = 'male';
+    else if (savedGender === 'female') avatarGender = 'female';
+    
+    // Get age range from birth year
+    const avatarAgeRange = getAgeBandFromBirthYear(savedBirthYear);
+    
+    // Only mark complete if both are set
+    const isComplete = avatarGender !== null && avatarAgeRange !== null;
+    
+    const updates: Record<string, unknown> = {
+      avatar_gender: avatarGender,
+      avatar_age_range: avatarAgeRange,
+      avatar_setup_complete: isComplete,
+      last_seen_at: new Date().toISOString(),
+    };
+    
+    console.log('[ProfileSettings] Syncing to vibe_users:', updates);
+    
+    // Try upsert first
+    const { error: upsertError } = await supabase
+      .from('vibe_users')
+      .upsert(
+        { anon_user_id: userId, ...updates },
+        { onConflict: 'anon_user_id' }
+      );
+    
+    if (upsertError) {
+      console.warn('[ProfileSettings] Upsert failed, trying update:', upsertError.message);
+      
+      // Fallback to update
+      const { error: updateError } = await supabase
+        .from('vibe_users')
+        .update(updates)
+        .eq('anon_user_id', userId);
+      
+      if (updateError) {
+        console.error('[ProfileSettings] Sync to vibe_users failed:', updateError);
+      }
+    }
+    
+    return isComplete;
+  };
+  
+  /**
+   * Mark the profile ready popup as seen in Supabase
+   */
+  const markProfileReadyPopupSeen = async (): Promise<void> => {
+    try {
+      await updateProfile({ profileReadyPopupSeen: true });
+    } catch (err) {
+      console.error('[ProfileSettings] Failed to mark popup as seen:', err);
+      // Don't block navigation on failure
+    }
+  };
+
+  // ============================================
   // HANDLERS
   // ============================================
 
@@ -152,6 +258,10 @@ export function ProfileSettings() {
     setSaveError(null);
 
     try {
+      // Check if avatar was complete BEFORE this save
+      const wasCompleteBefore = await checkAvatarSetupComplete();
+      wasAvatarCompleteBeforeSave.current = wasCompleteBefore;
+      
       // Save Supabase profile
       await updateProfile({
         relationshipStatus,
@@ -171,6 +281,34 @@ export function ProfileSettings() {
         favoriteCity,
       });
       
+      // Sync to vibe_users for avatar (this sets avatar_setup_complete)
+      const isNowComplete = await syncToVibeUsers(gender, birthYear);
+      
+      // Check if this is the FIRST profile completion
+      // Conditions: was NOT complete before AND is NOW complete AND popup not seen yet
+      // First completion: show modal once, user chooses to go to map
+      const isFirstCompletion = (
+        wasAvatarCompleteBeforeSave.current === false &&
+        isNowComplete === true &&
+        profile?.profileReadyPopupSeen === false
+      );
+      
+      if (isFirstCompletion) {
+        // Show the one-time profile ready modal
+        // DO NOT refetch profile gate yet - let user see modal first
+        // The refetch will happen when user clicks "Go to map"
+        setShowProfileReadyModal(true);
+        // Return early - don't show success message or trigger navigation
+        return;
+      }
+      
+      // Normal save (not first completion) - refetch profile gate
+      // This prevents being locked on Profile tab after subsequent saves
+      if (onProfileSaved) {
+        await onProfileSaved();
+      }
+      
+      // Show success message
       setShowSaved(true);
       setTimeout(() => setShowSaved(false), 2000);
     } catch (err) {
@@ -178,6 +316,29 @@ export function ProfileSettings() {
       setSaveError(message);
     } finally {
       setIsSaving(false);
+    }
+  };
+  
+  /**
+   * Handle "Go to map" button click from profile ready modal
+   * First completion: show modal once, user chooses to go to map
+   */
+  const handleGoToMap = async () => {
+    // Mark popup as seen in Supabase (non-blocking)
+    await markProfileReadyPopupSeen();
+    
+    // Close modal
+    setShowProfileReadyModal(false);
+    
+    // Now refetch profile gate so App.tsx knows profile is complete
+    // This was deferred from handleSave to let user see modal first
+    if (onProfileSaved) {
+      await onProfileSaved();
+    }
+    
+    // Navigate to map
+    if (onNavigateToMap) {
+      onNavigateToMap();
     }
   };
 
@@ -264,7 +425,7 @@ export function ProfileSettings() {
                 )}
                 className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
               >
-                <option value="">Ikke valgt</option>
+                <option value="">Not selected</option>
                 {PROFILE_RELATIONSHIP_STATUS_OPTIONS.map((status) => (
                   <option key={status} value={status}>
                     {PROFILE_RELATIONSHIP_STATUS_LABELS[status]}
@@ -276,14 +437,14 @@ export function ProfileSettings() {
             {/* Gender */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-slate-300 mb-2">
-                Kjønn
+                Gender
               </label>
               <select
                 value={gender ?? ''}
                 onChange={(e) => setGender(e.target.value === '' ? null : (e.target.value as Gender))}
                 className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
               >
-                <option value="">Ikke valgt</option>
+                <option value="">Not selected</option>
                 {GENDER_OPTIONS.map((g) => (
                   <option key={g} value={g}>{GENDER_LABELS[g]}</option>
                 ))}
@@ -293,7 +454,7 @@ export function ProfileSettings() {
             {/* Orientation */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-slate-300 mb-2">
-                Legning
+                Orientation
               </label>
               <select
                 value={orientation ?? ''}
@@ -302,7 +463,7 @@ export function ProfileSettings() {
                 )}
                 className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
               >
-                <option value="">Ikke valgt</option>
+                <option value="">Not selected</option>
                 {ORIENTATION_OPTIONS.map((o) => (
                   <option key={o} value={o}>{ORIENTATION_LABELS[o]}</option>
                 ))}
@@ -319,7 +480,7 @@ export function ProfileSettings() {
                 onChange={(e) => setBirthYear(e.target.value === '' ? null : Number(e.target.value))}
                 className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
               >
-                <option value="">Ikke valgt</option>
+                <option value="">Not selected</option>
                 {birthYearOptions.map((year) => (
                   <option key={year} value={year}>{year}</option>
                 ))}
@@ -480,7 +641,7 @@ export function ProfileSettings() {
               )}
               className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
             >
-              <option value="">Ikke valgt</option>
+              <option value="">Not selected</option>
               <option value="single">{RELATIONSHIP_STATUS_LABELS.single}</option>
               <option value="in_relationship">{RELATIONSHIP_STATUS_LABELS.in_relationship}</option>
               <option value="complicated">{RELATIONSHIP_STATUS_LABELS.complicated}</option>
@@ -500,7 +661,7 @@ export function ProfileSettings() {
               )}
               className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
             >
-              <option value="">Ikke valgt</option>
+              <option value="">Not selected</option>
               <option value="open">{ONS_INTENT_LABELS.open}</option>
               <option value="maybe">{ONS_INTENT_LABELS.maybe}</option>
               <option value="not_interested">{ONS_INTENT_LABELS.not_interested}</option>
@@ -520,7 +681,7 @@ export function ProfileSettings() {
               )}
               className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
             >
-              <option value="">Ikke valgt</option>
+              <option value="">Not selected</option>
               {INTENT_OPTIONS.map((intent) => (
                 <option key={intent} value={intent}>{INTENT_LABELS[intent]}</option>
               ))}
@@ -549,7 +710,7 @@ export function ProfileSettings() {
               {isSaving ? (
                 <>
                   <RefreshCw size={18} className="animate-spin" />
-                  Lagrer...
+                  Saving...
                 </>
               ) : (
                 <>
@@ -599,6 +760,39 @@ export function ProfileSettings() {
         isOpen={isFeedbackOpen}
         onClose={() => setIsFeedbackOpen(false)}
       />
+      
+      {/* Profile Ready Modal - One-time popup after first profile completion */}
+      {showProfileReadyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            {/* Success icon */}
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 bg-gradient-to-br from-emerald-500 to-green-600 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30">
+                <CheckCircle size={32} className="text-white" />
+              </div>
+            </div>
+            
+            {/* Title */}
+            <h2 className="text-xl font-bold text-white text-center mb-2">
+              Your default profile is ready.
+            </h2>
+            
+            {/* Body */}
+            <p className="text-slate-400 text-center mb-6">
+              Enjoy the night, explore the city, and let the vibe guide you.
+            </p>
+            
+            {/* Go to map button */}
+            <button
+              onClick={handleGoToMap}
+              className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white px-6 py-3.5 rounded-xl font-semibold transition-all shadow-lg shadow-violet-500/30"
+            >
+              <Map size={20} />
+              Go to map
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

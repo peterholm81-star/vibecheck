@@ -183,7 +183,7 @@ export function VenueDetail({
             className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
           >
             <ArrowLeft size={20} />
-            <span className="font-medium">Tilbake</span>
+            <span className="font-medium">Back</span>
           </button>
 
           {canCheckIn ? (
@@ -361,7 +361,7 @@ export function VenueDetail({
               {/* Gender distribution */}
               {demographics.totalGenderResponses >= 2 && (
                 <div>
-                  <h3 className="text-sm font-medium text-slate-400 mb-3">Kjønnsfordeling</h3>
+                  <h3 className="text-sm font-medium text-slate-400 mb-3">Gender distribution</h3>
                   <div className="grid grid-cols-3 gap-3">
                     {/* Women */}
                     <div className="bg-slate-900/50 rounded-lg p-3 text-center border border-slate-700">
@@ -418,7 +418,7 @@ export function VenueDetail({
                   </div>
                   {demographics.mostCommonAgeBand && (
                     <p className="text-xs text-slate-400 mt-3">
-                      📊 Vanligste aldersgruppe: <span className="text-violet-300 font-medium">{AGE_BAND_LABELS[demographics.mostCommonAgeBand]}</span>
+                      📊 Most common age group: <span className="text-violet-300 font-medium">{AGE_BAND_LABELS[demographics.mostCommonAgeBand]}</span>
                     </p>
                   )}
                   <p className="text-[11px] text-slate-500 mt-1">

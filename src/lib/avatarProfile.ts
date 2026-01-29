@@ -2,11 +2,11 @@
  * Avatar Profile API
  * 
  * Functions for managing avatar profile data in vibe_users table.
- * This is separate from the main profiles table which is for authenticated users.
+ * Uses auth.uid() for user identification.
  */
 
 import { supabase } from './supabase';
-import { getAnonUserId } from '../utils/anonUserId';
+import { getCurrentUserId } from './auth/getCurrentUserId';
 import type { 
   AvatarProfile, 
   AvatarGender, 
@@ -93,6 +93,7 @@ function avatarProfileToDbUpdates(profile: Partial<AvatarProfile>): Record<strin
 
 /**
  * Get current user's avatar profile from vibe_users
+ * Uses auth.uid() for identification
  */
 export async function getCurrentAvatarProfile(): Promise<AvatarProfile> {
   if (!supabase) {
@@ -101,7 +102,11 @@ export async function getCurrentAvatarProfile(): Promise<AvatarProfile> {
   }
 
   try {
-    const anonUserId = getAnonUserId();
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      console.warn('[AvatarProfile] Not authenticated');
+      return emptyAvatarProfile;
+    }
     
     const { data, error } = await supabase
       .from('vibe_users')
@@ -116,7 +121,7 @@ export async function getCurrentAvatarProfile(): Promise<AvatarProfile> {
         style,
         avatar_setup_complete
       `)
-      .eq('anon_user_id', anonUserId)
+      .eq('anon_user_id', userId)
       .maybeSingle();
 
     if (error) {
@@ -133,6 +138,7 @@ export async function getCurrentAvatarProfile(): Promise<AvatarProfile> {
 
 /**
  * Update current user's avatar profile
+ * Uses auth.uid() for identification
  */
 export async function updateAvatarProfile(
   updates: Partial<AvatarProfile>
@@ -143,20 +149,24 @@ export async function updateAvatarProfile(
   }
 
   try {
-    const anonUserId = getAnonUserId();
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      return { success: false, error: 'Not authenticated' };
+    }
+    
     const dbUpdates = avatarProfileToDbUpdates(updates);
     
     // Add timestamp
     dbUpdates.last_seen_at = new Date().toISOString();
 
-    console.log('[AvatarProfile] Updating profile:', dbUpdates);
+    console.log('[AvatarProfile] Updating profile for user:', userId);
 
     // Try upsert first
     const { error: upsertError } = await supabase
       .from('vibe_users')
       .upsert(
         {
-          anon_user_id: anonUserId,
+          anon_user_id: userId, // Use auth.uid()
           ...dbUpdates,
         },
         { onConflict: 'anon_user_id' }
@@ -173,7 +183,7 @@ export async function updateAvatarProfile(
     const { error: updateError } = await supabase
       .from('vibe_users')
       .update(dbUpdates)
-      .eq('anon_user_id', anonUserId);
+      .eq('anon_user_id', userId);
 
     if (updateError) {
       console.error('[AvatarProfile] Update failed:', updateError);

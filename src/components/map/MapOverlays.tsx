@@ -241,6 +241,8 @@ export function OnsIndicator({ heatmapMode }: OnsIndicatorProps) {
     single: { label: 'Single', emoji: '💘', color: 'bg-pink-500/90' },
     ons: { label: 'ONS', emoji: '🔥', color: 'bg-orange-500/90' },
     ons_boost: { label: 'Boost', emoji: '🚀', color: 'bg-red-500/90' },
+    chill: { label: 'Chill', emoji: '🧘', color: 'bg-teal-500/90' },
+    party: { label: 'Party', emoji: '🎉', color: 'bg-purple-500/90' },
   };
 
   const config = modeConfig[heatmapMode];

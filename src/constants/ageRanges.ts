@@ -23,13 +23,13 @@ export const AGE_RANGES = ['18–24', '25–34', '35–44', '45+'] as const;
 export type AgeRange = typeof AGE_RANGES[number];
 
 /**
- * Human-readable labels for each age range (Norwegian)
+ * Human-readable labels for each age range
  */
 export const AGE_RANGE_LABELS: Record<AgeRange, string> = {
-  '18–24': '18–24 år',
-  '25–34': '25–34 år',
-  '35–44': '35–44 år',
-  '45+': '45+ år',
+  '18–24': '18–24',
+  '25–34': '25–34',
+  '35–44': '35–44',
+  '45+': '45+',
 };
 
 /**
@@ -58,7 +58,7 @@ export function isValidAgeRange(value: unknown): value is AgeRange {
  */
 export function getAgeRangeLabel(ageRange: AgeRange | null | undefined): string {
   if (!ageRange || !isValidAgeRange(ageRange)) {
-    return 'Ikke oppgitt';
+    return 'Not specified';
   }
   return AGE_RANGE_LABELS[ageRange];
 }

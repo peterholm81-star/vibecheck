@@ -6,7 +6,7 @@ import { ensureAnonymousUser } from './lib/auth/ensureAnonymousUser';
 // LoginPage kept for potential admin use: import { LoginPage } from './pages/LoginPage';
 import { AdminApp } from './apps/AdminApp';
 import { InsightsApp } from './apps/InsightsApp';
-import { AvatarSetupPage } from './pages/AvatarSetupPage';
+// AvatarSetupPage removed - avatar setup is now part of unified onboarding
 import { VenueRoomPage } from './pages/VenueRoomPage';
 import { getVenues, getRecentCheckIns } from './api';
 import { MapView } from './components/MapView';
@@ -17,8 +17,7 @@ import { ProfileSettings } from './components/ProfileSettings';
 import { MobileFilters } from './components/MobileFilters';
 // Legacy onboarding kept for reference: import { Onboarding } from './components/Onboarding';
 import { OnboardingPage } from './features/onboarding/OnboardingPage';
-import { checkOnboardingComplete } from './lib/vibeUsers';
-import { checkAvatarSetupComplete } from './lib/avatarProfile';
+import { useUserProfileGate } from './hooks/useUserProfileGate';
 import { ToastContainer } from './components/Toast';
 import { useProfile, type AgeBand } from './hooks/useProfile';
 import { useToast } from './hooks/useToast';
@@ -98,10 +97,15 @@ function canCheckInAgain(
 
 interface MainAppProps {
   userId: string;
+  /** If true, force Profile tab (profile incomplete) */
+  forceProfileTab?: boolean;
+  /** Callback to refetch profile gate after profile save */
+  onProfileSaved?: () => Promise<void>;
 }
 
-function MainApp({ userId }: MainAppProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('map');
+function MainApp({ userId, forceProfileTab = false, onProfileSaved }: MainAppProps) {
+  // Start on profile tab if forced (profile incomplete after onboarding)
+  const [activeTab, setActiveTab] = useState<Tab>(forceProfileTab ? 'profile' : 'map');
   const [state, setState] = useState<MainAppState>({
     venues: [],
     checkIns: [],
@@ -110,9 +114,7 @@ function MainApp({ userId }: MainAppProps) {
   });
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
   
-  // Avatar setup gating state
-  const [avatarSetupChecked, setAvatarSetupChecked] = useState(false);
-  const [hasAvatarSetup, setHasAvatarSetup] = useState(false);
+  // Avatar setup gating removed - handled by App-level profile gate
   // Fixed time window - no longer user-configurable
   const timeWindowMinutes: TimeWindow = 180;
   const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>('activity');
@@ -221,32 +223,9 @@ function MainApp({ userId }: MainAppProps) {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // Check avatar setup status on mount
-  useEffect(() => {
-    async function checkAvatar() {
-      try {
-        const complete = await checkAvatarSetupComplete();
-        setHasAvatarSetup(complete);
-      } catch (err) {
-        console.error('[MainApp] Error checking avatar setup:', err);
-        setHasAvatarSetup(false);
-      } finally {
-        setAvatarSetupChecked(true);
-      }
-    }
-    checkAvatar();
-  }, []);
+  // Avatar setup check removed - handled by App-level profile gate
 
-  // Handle venueId query param (for return from avatar setup)
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const venueIdFromUrl = params.get('venueId');
-    if (venueIdFromUrl && avatarSetupChecked && hasAvatarSetup) {
-      setSelectedVenueId(venueIdFromUrl);
-      // Clean up URL
-      window.history.replaceState({}, '', '/');
-    }
-  }, [avatarSetupChecked, hasAvatarSetup]);
+  // venueId query param handling removed - avatar setup is now part of onboarding
 
   // ============================================
   // SMART CHECK-IN ENGINE
@@ -264,7 +243,7 @@ function MainApp({ userId }: MainAppProps) {
       if (result.success && result.venueName) {
         showSuccess(`✅ Du er nå sjekket inn på ${result.venueName}`);
       } else if (result.error) {
-        showError(`Smart check-in feilet: ${result.error}`);
+        showError(`Smart check-in failed: ${result.error}`);
       }
     },
     onRefresh: fetchData,
@@ -468,20 +447,12 @@ function MainApp({ userId }: MainAppProps) {
   };
 
   // Handle venue click from map or list
-  // Routes to Venue Room, with avatar setup gating if needed
+  // Routes to Venue Room - avatar setup gating is handled by App-level profile gate
   const handleVenueClick = (venueId: string) => {
-    console.log('[VenueClick] venueId=', venueId, 'avatarComplete=', hasAvatarSetup);
+    console.log('[VenueClick] venueId=', venueId);
     
-    // Check if avatar setup is required
-    if (avatarSetupChecked && !hasAvatarSetup) {
-      // Redirect to avatar setup with return URL pointing to Venue Room
-      const returnTo = encodeURIComponent(`/venue-room/${venueId}`);
-      window.history.pushState({}, '', `/avatar-setup?returnTo=${returnTo}`);
-      window.location.reload();
-      return;
-    }
-    
-    // Avatar is complete - go directly to Venue Room
+    // Navigate to Venue Room directly
+    // Note: User can only reach this if profile is complete (gate ensures this)
     window.history.pushState({}, '', `/venue-room/${venueId}`);
     window.location.reload();
   };
@@ -819,7 +790,7 @@ function MainApp({ userId }: MainAppProps) {
         );
 
       case 'profile':
-        return <ProfileSettings />;
+        return <ProfileSettings onNavigateToMap={() => setActiveTab('map')} onProfileSaved={onProfileSaved} />;
     }
   };
 
@@ -1169,11 +1140,48 @@ function isOnboardingRoute(): boolean {
   return window.location.pathname === '/onboarding';
 }
 
+// Avatar setup route removed - now part of unified onboarding
+
+// ============================================
+// DEV-ONLY: Fresh experience restore
+// ============================================
+const DEV_FORCE_FRESH_KEY = 'DEV_FORCE_FRESH_ONBOARDING';
+
 /**
- * Check if current URL is the avatar setup route
+ * Check if current URL is the dev restore route
+ * DEV-ONLY: Clears state and forces fresh onboarding experience
  */
-function isAvatarSetupRoute(): boolean {
-  return window.location.pathname === '/avatar-setup';
+function isDevRestoreRoute(): boolean {
+  return window.location.pathname === '/__dev_restore';
+}
+
+/**
+ * DEV-ONLY: Handle the /__dev_restore route
+ * Clears localStorage and sets sessionStorage flag to force fresh onboarding
+ */
+function handleDevRestore(): void {
+  if (!import.meta.env.DEV) return;
+  
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('[DEV RESTORE] Clearing state for fresh experience...');
+  
+  // Clear onboarding localStorage key
+  const clearedKeys: string[] = [];
+  if (localStorage.getItem('vibecheck_onboarding_complete')) {
+    localStorage.removeItem('vibecheck_onboarding_complete');
+    clearedKeys.push('vibecheck_onboarding_complete');
+  }
+  
+  // Set flag to force fresh onboarding (bypasses DB state)
+  sessionStorage.setItem(DEV_FORCE_FRESH_KEY, 'true');
+  
+  console.log('[DEV RESTORE] Cleared localStorage keys:', clearedKeys.length > 0 ? clearedKeys : '(none found)');
+  console.log('[DEV RESTORE] Set sessionStorage flag:', DEV_FORCE_FRESH_KEY);
+  console.log('[DEV RESTORE] Redirecting to / ...');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  
+  // Redirect to root
+  window.location.href = '/';
 }
 
 /**
@@ -1204,9 +1212,8 @@ function App() {
   const [authReady, setAuthReady] = useState(false);
   const [authError, setAuthError] = useState<Error | null>(null);
   
-  // Onboarding 2.0 state - null until checked
-  const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null);
-  const [onboardingChecked, setOnboardingChecked] = useState(false);
+  // Profile gate - single source of truth for onboarding+avatar status
+  const profileGate = useUserProfileGate();
   
   // Admin route state
   const [showAdmin, setShowAdmin] = useState(isAdminRoute());
@@ -1214,65 +1221,40 @@ function App() {
   // Insights route state
   const [showInsights, setShowInsights] = useState(isInsightsRoute());
   
-  // Onboarding route state
+  // Onboarding route state (explicit navigation to /onboarding)
   const [showOnboarding, setShowOnboarding] = useState(isOnboardingRoute());
-  
-  // Avatar setup route state
-  const [showAvatarSetup, setShowAvatarSetup] = useState(isAvatarSetupRoute());
   
   // Venue room route state
   const [venueRoomId, setVenueRoomId] = useState<string | null>(getVenueRoomId());
 
-  // Sjekk onboarding-status ved oppstart (Supabase + localStorage fallback)
-  useEffect(() => {
-    async function checkOnboarding() {
-      // First check localStorage for fast initial render
-      const localComplete = localStorage.getItem(ONBOARDING_COMPLETE_KEY) === 'true';
-      
-      if (localComplete) {
-        setHasOnboarded(true);
-        setOnboardingChecked(true);
-        return;
-      }
-      
-      // Then check Supabase for authoritative status
-      try {
-        const complete = await checkOnboardingComplete();
-        setHasOnboarded(complete);
-        
-        // Sync to localStorage if Supabase says complete
-        if (complete) {
-          localStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
-        }
-      } catch (err) {
-        console.error('[App] Failed to check onboarding status:', err);
-        setHasOnboarded(false);
-      }
-      
-      setOnboardingChecked(true);
-    }
-    
-    checkOnboarding();
-  }, []);
+  // Profile gate hook handles onboarding+avatar status check
 
-  // Handle browser back/forward for admin, insights, onboarding, avatar-setup, and venue-room routes
+  // Handle browser back/forward for admin, insights, onboarding, and venue-room routes
   useEffect(() => {
     const handlePopState = () => {
       setShowAdmin(isAdminRoute());
       setShowInsights(isInsightsRoute());
       setShowOnboarding(isOnboardingRoute());
-      setShowAvatarSetup(isAvatarSetupRoute());
       setVenueRoomId(getVenueRoomId());
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Håndter fullført onboarding 2.0
-  const handleOnboardingComplete = () => {
+  // Håndter fullført onboarding 2.0 (now includes avatar)
+  const handleOnboardingComplete = async () => {
     localStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
-    setHasOnboarded(true);
     setShowOnboarding(false);
+    
+    // DEV-ONLY: Clear the force fresh flag after completing onboarding
+    if (import.meta.env.DEV) {
+      sessionStorage.removeItem(DEV_FORCE_FRESH_KEY);
+      console.log('[DEV] Cleared DEV_FORCE_FRESH_KEY after onboarding complete');
+    }
+    
+    // Refetch profile to update gate state
+    await profileGate.refetch();
+    
     // Navigate to main app
     window.history.pushState({}, '', '/');
   };
@@ -1341,6 +1323,22 @@ function App() {
     };
   }, []);
 
+  // ============================================
+  // DEV-ONLY: Handle /__dev_restore route
+  // ============================================
+  if (import.meta.env.DEV && isDevRestoreRoute()) {
+    handleDevRestore();
+    // Show loading while redirecting
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw size={48} className="mx-auto text-violet-400 animate-spin mb-4" />
+          <p className="text-slate-300 font-medium">Restoring fresh experience...</p>
+        </div>
+      </div>
+    );
+  }
+
   // Show admin dashboard if on /admin route
   // AdminApp handles PIN authentication and passes it to AdminDashboard
   if (showAdmin) {
@@ -1353,34 +1351,17 @@ function App() {
     return <InsightsApp />;
   }
 
-  // Show avatar setup page if on /avatar-setup route
-  if (showAvatarSetup) {
-    const handleAvatarSetupComplete = () => {
-      setShowAvatarSetup(false);
-      // Navigate to returnTo param if present, otherwise go home
-      const params = new URLSearchParams(window.location.search);
-      const returnTo = params.get('returnTo');
-      if (returnTo) {
-        window.history.pushState({}, '', returnTo);
-      } else {
-        window.history.pushState({}, '', '/');
-      }
-      window.location.reload();
-    };
-    
-    return (
-      <AvatarSetupPage
-        onComplete={handleAvatarSetupComplete}
-        onBack={() => {
-          window.history.pushState({}, '', '/');
-          window.location.reload();
-        }}
-      />
-    );
+  // Avatar setup route removed - now part of unified onboarding
+  // If someone navigates to /avatar-setup, redirect to onboarding
+  if (window.location.pathname === '/avatar-setup') {
+    window.history.replaceState({}, '', '/onboarding');
+    setShowOnboarding(true);
+    return null;
   }
 
   // Show venue room page if on /venue-room/:venueId route
-  if (venueRoomId) {
+  // Note: Profile gate will block this if onboarding not complete
+  if (venueRoomId && profileGate.isComplete) {
     const handleVenueRoomBack = () => {
       setVenueRoomId(null);
       window.history.pushState({}, '', '/');
@@ -1400,15 +1381,15 @@ function App() {
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
         <div className="text-center max-w-md">
           <AlertCircle size={48} className="mx-auto text-red-400 mb-4" />
-          <h1 className="text-xl font-bold text-white mb-2">Noe gikk galt</h1>
+          <h1 className="text-xl font-bold text-white mb-2">Something went wrong</h1>
           <p className="text-slate-400 mb-6">
-            Kunne ikke starte appen. Prøv å laste siden på nytt.
+            Could not start the app. Please try reloading the page.
           </p>
           <button
             onClick={() => window.location.reload()}
             className="px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white font-medium rounded-xl transition-colors"
           >
-            Last inn på nytt
+            Reload
           </button>
           <p className="text-slate-600 text-xs mt-4">
             Feil: {authError.message}
@@ -1424,26 +1405,36 @@ function App() {
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="text-center">
           <RefreshCw size={48} className="mx-auto text-violet-400 animate-spin mb-4" />
-          <p className="text-slate-300 font-medium">Laster VibeCheck...</p>
+          <p className="text-slate-300 font-medium">Loading VibeCheck...</p>
         </div>
       </div>
     );
   }
 
-  // Wait for onboarding status check
-  if (!onboardingChecked || hasOnboarded === null) {
+  // Wait for profile gate to load
+  if (profileGate.isLoading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="text-center">
           <RefreshCw size={48} className="mx-auto text-violet-400 animate-spin mb-4" />
-          <p className="text-slate-300 font-medium">Laster...</p>
+          <p className="text-slate-300 font-medium">Loading profile...</p>
         </div>
       </div>
     );
   }
 
-  // Show onboarding if not completed (or on /onboarding route)
-  if (showOnboarding || !hasOnboarded) {
+  // GATING LOGIC:
+  // 1. If onboarding story NOT seen → show OnboardingPage
+  // 2. Else → show MainApp (force Profile tab if profile incomplete)
+  
+  // DEV-ONLY: Check if fresh experience was requested via /__dev_restore
+  const devForceFresh = import.meta.env.DEV && sessionStorage.getItem(DEV_FORCE_FRESH_KEY) === 'true';
+  if (devForceFresh) {
+    console.log('[DEV] Fresh onboarding forced via DEV_FORCE_FRESH_KEY');
+  }
+  
+  // Show onboarding if story not complete (or on /onboarding route, or DEV force fresh)
+  if (showOnboarding || !profileGate.isOnboardingComplete || devForceFresh) {
     return <OnboardingPage onComplete={handleOnboardingComplete} />;
   }
 
@@ -1455,20 +1446,21 @@ function App() {
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
         <div className="text-center">
           <AlertCircle size={48} className="mx-auto text-amber-400 mb-4" />
-          <p className="text-slate-300 mb-4">Kunne ikke koble til. Prøv igjen.</p>
+          <p className="text-slate-300 mb-4">Could not connect. Please try again.</p>
           <button
             onClick={() => window.location.reload()}
             className="px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white font-medium rounded-xl transition-colors"
           >
-            Last inn på nytt
+            Reload
           </button>
         </div>
       </div>
     );
   }
 
-  // Auth ready + onboarded → show main app
-  return <MainApp userId={user.id} />;
+  // Onboarding story complete → show main app
+  // Force Profile tab if profile incomplete (gender + age not saved yet)
+  return <MainApp userId={user.id} forceProfileTab={!profileGate.isProfileComplete} onProfileSaved={profileGate.refetch} />;
 }
 
 export default App;

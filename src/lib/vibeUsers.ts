@@ -1,11 +1,12 @@
 /**
  * Vibe Users API
  * 
- * Functions for managing anonymous users in the vibe_users table.
+ * Functions for managing users in the vibe_users table.
+ * Uses Supabase auth.uid() for user identification.
  */
 
 import { supabase } from './supabase';
-import { getAnonUserId } from '../utils/anonUserId';
+import { getCurrentUserId } from './auth/getCurrentUserId';
 
 // ============================================
 // SQL FOR SUPABASE (KJØRES MANUELT I SUPABASE SQL EDITOR):
@@ -19,12 +20,17 @@ import { getAnonUserId } from '../utils/anonUserId';
 
 /**
  * Onboarding 2.0 data structure matching the new wizard steps
+ * Now includes avatar fields for unified onboarding flow
  */
 export interface OnboardingData2 {
   mode: string | null;              // What user is doing tonight (party, chill, date_night, etc.)
   vibe_preferences: string[];       // What user is looking for (danse, rolig_prat, flørte, ons, etc.)
   age_group: string | null;         // Age group (18-22, 23-27, etc.)
   onboarding_complete: boolean;     // Whether onboarding is finished
+  // Avatar fields (for unified onboarding)
+  avatar_gender?: string | null;    // 'male' | 'female'
+  avatar_age_range?: string | null; // Uses standardized AGE_RANGES
+  avatar_setup_complete?: boolean;  // Whether avatar is set up
 }
 
 /**
@@ -120,7 +126,39 @@ function cityIdToName(cityId: string | null): string | null {
 }
 
 /**
+ * Map onboarding age group values to standardized AGE_RANGES values.
+ * Onboarding uses: '18-22', '23-27', '28-34', '35-44', '45+'
+ * Standardized: '18–24', '25–34', '35–44', '45+' (uses en-dash)
+ */
+function normalizeAgeGroup(ageGroup: string | null): string | null {
+  if (!ageGroup) return null;
+  
+  // Map onboarding values to standardized ranges
+  const mapping: Record<string, string> = {
+    '18-22': '18–24',
+    '18-24': '18–24',
+    '18–24': '18–24', // Already correct
+    '23-27': '25–34',
+    '25-34': '25–34',
+    '25–34': '25–34', // Already correct
+    '28-34': '25–34',
+    '35-44': '35–44',
+    '35–44': '35–44', // Already correct
+    '45+': '45+',     // Already correct
+  };
+  
+  const normalized = mapping[ageGroup];
+  if (!normalized) {
+    console.warn(`[vibeUsers] Unknown age_group value: "${ageGroup}"`);
+    return null;
+  }
+  
+  return normalized;
+}
+
+/**
  * Save or update onboarding data to Supabase vibe_users table.
+ * Uses auth.uid() as the user identifier.
  * (Legacy function for backwards compatibility)
  */
 export async function saveOnboardingToSupabase(
@@ -132,10 +170,13 @@ export async function saveOnboardingToSupabase(
   }
 
   try {
-    const anonUserId = getAnonUserId();
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      return { success: false, error: 'Not authenticated' };
+    }
     
     const userData = {
-      anon_user_id: anonUserId,
+      anon_user_id: userId, // Use auth.uid() as the identifier
       city: cityIdToName(onboardingData.favoriteCityId),
       age_group: ageRangeToLabel(onboardingData.ageRange),
       energy_level: moodToEnergyLevel(onboardingData.mood),
@@ -165,6 +206,7 @@ export async function saveOnboardingToSupabase(
 
 /**
  * Save Onboarding 2.0 data to Supabase vibe_users table.
+ * Uses auth.uid() as the user identifier.
  * Uses the new fields: mode, vibe_preferences, age_group, onboarding_complete
  * 
  * Strategy:
@@ -184,18 +226,39 @@ export async function saveOnboarding2ToSupabase(
     return { success: true };
   }
 
-  const anonUserId = getAnonUserId();
+  const userId = await getCurrentUserId();
+  if (!userId) {
+    console.error('[Onboarding] Ikke autentisert');
+    return { success: false, error: 'Ikke autentisert' };
+  }
   
-  const userData = {
-    anon_user_id: anonUserId,
+  // Normalize age_group to standardized format
+  const normalizedAgeGroup = normalizeAgeGroup(data.age_group);
+  
+  // Build user data object
+  const userData: Record<string, unknown> = {
+    anon_user_id: userId, // Use auth.uid() as the identifier
     mode: data.mode,
     vibe_preferences: data.vibe_preferences,
-    age_group: data.age_group,
+    age_group: normalizedAgeGroup, // Use normalized value
     onboarding_complete: data.onboarding_complete,
     last_seen_at: new Date().toISOString(),
   };
 
-  console.log('[Onboarding] Lagrer data for bruker:', anonUserId);
+  // Include avatar fields if provided
+  if (data.avatar_gender !== undefined) {
+    userData.avatar_gender = data.avatar_gender;
+  }
+  if (data.avatar_age_range !== undefined) {
+    userData.avatar_age_range = data.avatar_age_range;
+  }
+  if (data.avatar_setup_complete !== undefined) {
+    userData.avatar_setup_complete = data.avatar_setup_complete;
+  }
+
+  console.log('[Onboarding] Lagrer data for bruker:', userId);
+  console.log('[Onboarding] age_group normalized:', data.age_group, '->', normalizedAgeGroup);
+  console.log('[Onboarding] avatar_setup_complete:', data.avatar_setup_complete);
   console.log('[Onboarding] Data som sendes:', userData);
 
   try {
@@ -228,16 +291,28 @@ export async function saveOnboarding2ToSupabase(
       console.warn('[Onboarding] Bruker finnes allerede, prøver UPDATE:', insertError.message);
 
       // Strategi 3: Prøv UPDATE
+      // Build update data including avatar fields if present
+      const updateData: Record<string, unknown> = {
+        mode: data.mode,
+        vibe_preferences: data.vibe_preferences,
+        age_group: normalizedAgeGroup, // Use normalized value
+        onboarding_complete: data.onboarding_complete,
+        last_seen_at: new Date().toISOString(),
+      };
+      if (data.avatar_gender !== undefined) {
+        updateData.avatar_gender = data.avatar_gender;
+      }
+      if (data.avatar_age_range !== undefined) {
+        updateData.avatar_age_range = data.avatar_age_range;
+      }
+      if (data.avatar_setup_complete !== undefined) {
+        updateData.avatar_setup_complete = data.avatar_setup_complete;
+      }
+      
       const { error: updateError } = await supabase
         .from('vibe_users')
-        .update({
-          mode: data.mode,
-          vibe_preferences: data.vibe_preferences,
-          age_group: data.age_group,
-          onboarding_complete: data.onboarding_complete,
-          last_seen_at: new Date().toISOString(),
-        })
-        .eq('anon_user_id', anonUserId);
+        .update(updateData)
+        .eq('anon_user_id', userId);
 
       if (!updateError) {
         console.log('[Onboarding] ✅ Update vellykket!');
@@ -286,7 +361,8 @@ export async function saveOnboarding2ToSupabase(
 
 /**
  * Check if user has completed onboarding.
- * Checks both Supabase (onboarding_complete field) and localStorage fallback.
+ * Uses auth.uid() to check the vibe_users table.
+ * Falls back to localStorage for offline support.
  * 
  * @returns Promise<boolean> - true if onboarding is complete
  */
@@ -299,12 +375,15 @@ export async function checkOnboardingComplete(): Promise<boolean> {
   }
 
   try {
-    const anonUserId = getAnonUserId();
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      return localComplete;
+    }
     
     const { data, error } = await supabase
       .from('vibe_users')
       .select('onboarding_complete')
-      .eq('anon_user_id', anonUserId)
+      .eq('anon_user_id', userId)
       .maybeSingle();
 
     if (error) {
@@ -326,7 +405,8 @@ export async function checkOnboardingComplete(): Promise<boolean> {
 }
 
 /**
- * Update last_seen_at timestamp for the current anonymous user.
+ * Update last_seen_at timestamp for the current user.
+ * Uses auth.uid() for identification.
  * Used when user opens the map screen.
  * 
  * This is a fire-and-forget operation - errors are logged but don't block UI.
@@ -337,15 +417,49 @@ export async function updateLastSeen(): Promise<void> {
   }
 
   try {
-    const anonUserId = getAnonUserId();
+    const userId = await getCurrentUserId();
+    if (!userId) return;
     
     await supabase
       .from('vibe_users')
       .update({ last_seen_at: new Date().toISOString() })
-      .eq('anon_user_id', anonUserId);
+      .eq('anon_user_id', userId);
       
   } catch (err) {
     // Fire-and-forget: just log errors
     console.error('Failed to update last_seen_at:', err);
+  }
+}
+
+/**
+ * Check if user has a vibe_users row (onboarding complete).
+ * This is used as a guard before check-in.
+ * 
+ * @returns Promise<boolean> - true if user exists in vibe_users
+ */
+export async function hasVibeUsersRow(): Promise<boolean> {
+  if (!supabase) {
+    return false;
+  }
+
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) return false;
+    
+    const { data, error } = await supabase
+      .from('vibe_users')
+      .select('anon_user_id')
+      .eq('anon_user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[hasVibeUsersRow] Error:', error);
+      return false;
+    }
+
+    return !!data;
+  } catch (err) {
+    console.error('[hasVibeUsersRow] Exception:', err);
+    return false;
   }
 }

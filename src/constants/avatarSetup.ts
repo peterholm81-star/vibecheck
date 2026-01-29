@@ -15,8 +15,8 @@ export type AvatarGender = 'male' | 'female';
 export const AVATAR_GENDER_OPTIONS: AvatarGender[] = ['male', 'female'];
 
 export const AVATAR_GENDER_LABELS: Record<AvatarGender, string> = {
-  male: 'Mann',
-  female: 'Kvinne',
+  male: 'Male',
+  female: 'Female',
 };
 
 // ============================================
@@ -40,8 +40,8 @@ export type AvatarRelationshipStatus = 'single' | 'relationship';
 export const AVATAR_RELATIONSHIP_OPTIONS: AvatarRelationshipStatus[] = ['single', 'relationship'];
 
 export const AVATAR_RELATIONSHIP_LABELS: Record<AvatarRelationshipStatus, string> = {
-  single: 'Singel',
-  relationship: 'I forhold',
+  single: 'Single',
+  relationship: 'In a relationship',
 };
 
 // ============================================
@@ -53,9 +53,9 @@ export type AvatarEnergy = 'calm' | 'curious' | 'playful';
 export const AVATAR_ENERGY_OPTIONS: AvatarEnergy[] = ['calm', 'curious', 'playful'];
 
 export const AVATAR_ENERGY_LABELS: Record<AvatarEnergy, string> = {
-  calm: '😌 Rolig',
-  curious: '🤔 Nysgjerrig',
-  playful: '😜 Leken',
+  calm: '😌 Calm',
+  curious: '🤔 Curious',
+  playful: '😜 Playful',
 };
 
 // ============================================
@@ -67,8 +67,8 @@ export type AvatarStyle = 'neutral' | 'marked';
 export const AVATAR_STYLE_OPTIONS: AvatarStyle[] = ['neutral', 'marked'];
 
 export const AVATAR_STYLE_LABELS: Record<AvatarStyle, string> = {
-  neutral: 'Nøytral',
-  marked: 'Markert',
+  neutral: 'Neutral',
+  marked: 'Expressive',
 };
 
 // ============================================
